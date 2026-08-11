@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: raja-fraz-master-dashboard
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: META_API_BASE
+        value: https://inverterzone-dashboard.onrender.com
+      - key: MATRIX_API_BASE
+        value: https://fronus-matrix-dashboard.onrender.com
+      - key: ELECTRICITY_RATE_PKR
+        value: 60
