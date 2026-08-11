@@ -167,6 +167,53 @@ function combine(meta, matrix) {
     gridDirection: direction(grid), health: systems.length === 2 ? "Excellent" : "Degraded"
   };
 }
+
+function normalizeEnergy(payload, period = "T") {
+  const source = payload?.data && typeof payload.data === "object" ? payload.data : unwrap(payload);
+  return {
+    period,
+    solarKwh: first(source, ["todaySolar"], 0),
+    loadKwh: first(source, ["todayLoad"], 0),
+    importKwh: first(source, ["todayGrid", "todayImport"], 0),
+    exportKwh: first(source, ["todayNetGrid", "todayExport"], 0),
+    rate: first(source, ["rate"], RATE)
+  };
+}
+
+async function fetchEnergy(period = "T") {
+  const safePeriod = ["T", "Y", "TM", "LM"].includes(period) ? period : "T";
+  const [metaResult, matrixResult] = await Promise.allSettled([
+    getMetaJson(`/api/energy?period=${encodeURIComponent(safePeriod)}`).then((p) => normalizeEnergy(p, safePeriod)),
+    getJson(`${MATRIX_API_BASE}/api/energy?period=${encodeURIComponent(safePeriod)}`).then((p) => normalizeEnergy(p, safePeriod))
+  ]);
+  const meta = metaResult.status === "fulfilled" ? metaResult.value : null;
+  const matrix = matrixResult.status === "fulfilled" ? matrixResult.value : null;
+  const add = (key) => num(meta?.[key]) + num(matrix?.[key]);
+  const combined = {
+    period: safePeriod,
+    solarKwh: add("solarKwh"),
+    loadKwh: add("loadKwh"),
+    importKwh: add("importKwh"),
+    exportKwh: add("exportKwh"),
+    rate: RATE
+  };
+  combined.solarValuePkr = combined.solarKwh * RATE;
+  combined.netGridKwh = combined.importKwh - combined.exportKwh;
+  return {
+    ok: Boolean(meta || matrix),
+    complete: Boolean(meta && matrix),
+    period: safePeriod,
+    meta,
+    matrix,
+    combined,
+    rate: RATE,
+    errors: {
+      ...(metaResult.status === "rejected" ? { meta: metaAuthHint(metaResult.reason) } : {}),
+      ...(matrixResult.status === "rejected" ? { matrix: matrixResult.reason.message } : {})
+    }
+  };
+}
+
 function metaAuthHint(error) {
   if (!error) return null;
   if (error.status === 401) return "Meta dashboard requires Basic Auth. Set META_DASHBOARD_PASSWORD in this Render service to the same password used by InverterZone.";
@@ -368,6 +415,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     if (url.pathname === "/api/master/live") return json(res, 200, await fetchLive());
+    if (url.pathname === "/api/master/energy") return json(res, 200, await fetchEnergy(String(url.searchParams.get("period") || "T")));
     if (url.pathname === "/api/master/history") return json(res, 200, await fetchHistory(Math.max(1, Math.min(720, num(url.searchParams.get("hours"), 24)))));
     if (url.pathname === "/api/master/history/status") return json(res, 200, await historyStats());
     if (url.pathname === "/api/master/collect") {
@@ -377,7 +425,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/api/master/weather") return json(res, 200, await fetchWeather());
     if (url.pathname === "/api/health") return json(res, 200, {
-      success: true, service: "Raja Fraz Master Solar Command Center V3",
+      success: true, service: "Raja Fraz Master Solar Command Center V4",
       meta: META_API_BASE, matrix: MATRIX_API_BASE,
       metaAuthConfigured: Boolean(META_DASHBOARD_PASSWORD), history: await historyStats()
     });
@@ -392,7 +440,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 await initDb();
-server.listen(PORT, () => console.log(`Raja Fraz Master Solar Command Center V3 running on ${PORT}`));
+server.listen(PORT, () => console.log(`Raja Fraz Master Solar Command Center V4 running on ${PORT}`));
 
 setInterval(async () => {
   try {

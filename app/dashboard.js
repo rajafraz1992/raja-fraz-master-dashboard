@@ -4,6 +4,8 @@ const COLORS = { solar:'#f6b526', load:'#357be8', grid:'#20ad70', import:'#f0495
 let live = null;
 let history = { meta: [], matrix: [], combined: [], storage: 'loading', samples: 0 };
 let activeHours = 24;
+let activeEnergyPeriod = 'T';
+let energy = null;
 
 function set(id, value) { const el = $(id); if (el) el.textContent = value; }
 function finite(v, f=0) { const n = Number(v); return Number.isFinite(n) ? n : f; }
@@ -28,6 +30,11 @@ $$('.rangeButtons button').forEach((button)=>button.addEventListener('click',()=
   activeHours=Number(button.dataset.hours)||24;
   loadHistory(activeHours);
 }));
+$$('#energyPeriod button').forEach((button)=>button.addEventListener('click',()=>{
+  $$('#energyPeriod button').forEach((b)=>b.classList.toggle('active',b===button));
+  activeEnergyPeriod=button.dataset.period||'T';
+  loadEnergy(activeEnergyPeriod);
+}));
 
 async function loadLive(){
   try{
@@ -47,6 +54,15 @@ async function loadHistory(hours=24){
     $('historyChip')?.classList.toggle('onlineHistory',online);
     drawAll();
   }catch(_error){ set('historyChip','History • unavailable'); }
+}
+async function loadEnergy(period='T'){
+  try{
+    const response=await fetch(`/api/master/energy?period=${encodeURIComponent(period)}`,{cache:'no-store'});
+    energy=await response.json();
+    renderEnergy();
+  }catch(error){
+    const n=$('energyNotice'); if(n){n.hidden=false;n.textContent=`Totals unavailable: ${error.message}`;}
+  }
 }
 async function loadWeather(){
   try{const r=await fetch('/api/master/weather',{cache:'no-store'});const w=await r.json();const d=w.data||{};const t=d.temperature??d.temperature_2m??d.current?.temperature_2m;if(Number.isFinite(Number(t)))set('weather',`☁ ${Math.round(Number(t))}° Gujrat`);}catch(_error){}
@@ -99,10 +115,28 @@ function renderCombined(c,m,x){
   set('masterBattery',x?.batteryPct!=null?`${Math.round(x.batteryPct)}%`:'--'); set('masterHealth',(m&&x)?'Excellent · 100/100':'Partial');
 }
 function renderTotals(c,m,x){
+  // Main dashboard quick totals use the live payload. The Totals tab uses /api/master/energy.
   set('todaySolar',fmtKwh(c.todaySolar));set('todayLoad',fmtKwh(c.todayLoad));set('todayImport',fmtKwh(c.todayImport));set('todayExport',fmtKwh(c.todayExport));
-  set('totSolar',fmtKwh(c.todaySolar));set('totLoad',fmtKwh(c.todayLoad));set('totImport',fmtKwh(c.todayImport));set('totExport',fmtKwh(c.todayExport));
-  const value=Math.round(finite(c.todaySolar)*finite(live.rate,60)); set('solarValue',`PKR ${value.toLocaleString()}`);set('solarValueBig',value.toLocaleString());set('rateValue',`PKR ${finite(live.rate,60).toFixed(2)}/kWh`);set('totMetaSolar',fmtKwh(m?.todaySolar));set('totMatrixSolar',fmtKwh(x?.todaySolar));
+  if(!energy) return;
+  renderEnergy();
 }
+function renderEnergy(){
+  if(!energy)return;
+  const m=energy.meta||{}, x=energy.matrix||{}, c=energy.combined||{};
+  const labels={T:'Today',Y:'Yesterday',TM:'This month',LM:'Last month'};
+  const label=labels[energy.period]||'Selected period';
+  set('totSolar',fmtKwh(c.solarKwh));set('totLoad',fmtKwh(c.loadKwh));set('totImport',fmtKwh(c.importKwh));set('totExport',fmtKwh(c.exportKwh));
+  ['totPeriodSolar','totPeriodLoad','totPeriodImport','totPeriodExport'].forEach(id=>set(id,`Combined · ${label}`));
+  set('energyPeriodLabel',`${label} · Meta + Matrix + Combined`);
+  const value=Math.round(finite(c.solarKwh)*finite(energy.rate,60));
+  set('solarValue',`PKR ${value.toLocaleString()}`);set('solarValueBig',value.toLocaleString());set('rateValue',`PKR ${finite(energy.rate,60).toFixed(2)}/kWh`);
+  set('totMetaSolar',fmtKwh(m.solarKwh));set('totMatrixSolar',fmtKwh(x.solarKwh));set('totCombinedSolar',fmtKwh(c.solarKwh));
+  set('totMetaLoad',fmtKwh(m.loadKwh));set('totMatrixLoad',fmtKwh(x.loadKwh));set('totCombinedImport',fmtKwh(c.importKwh));set('totCombinedExport',fmtKwh(c.exportKwh));
+  const notice=$('energyNotice');
+  if(notice){const msgs=[];if(energy.errors?.meta)msgs.push(`Meta: ${energy.errors.meta}`);if(energy.errors?.matrix)msgs.push(`Matrix: ${energy.errors.matrix}`);notice.hidden=!msgs.length;notice.textContent=msgs.join(' • ');}
+  drawEnergyBars();
+}
+
 function metricCards(items){return items.map(([label,value,sub])=>`<div class="detailCard"><span>${label}</span><b>${value}</b><small>${sub||''}</small></div>`).join('');}
 function renderDetailPages(m,x,c){
   $('metaPage').innerHTML=metricCards(m?[
@@ -158,7 +192,25 @@ function drawLineChart(id,series,{signed=false}={}){
   if(signed){ctx.strokeStyle='#b7ceda';ctx.beginPath();ctx.moveTo(pad.l,y(0));ctx.lineTo(w-pad.r,y(0));ctx.stroke();}
   for(const s of series){if(!s.data.length)continue;ctx.strokeStyle=s.color;ctx.lineWidth=2;ctx.beginPath();s.data.forEach((p,i)=>{const xx=x(i,s.data.length),yy=y(p.v);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.stroke();}
 }
-function drawBars(){const c=$('barChart');if(!c||!live)return;const {ctx,w,h}=canvasSize(c);ctx.clearRect(0,0,w,h);const d=live.systems?.combined||{};const vals=[['Solar',finite(d.todaySolar),COLORS.solar],['Load',finite(d.todayLoad),COLORS.load],['Import',finite(d.todayImport),COLORS.import],['Export',finite(d.todayExport),COLORS.grid]];const max=Math.max(1,...vals.map(v=>v[1]));const gap=w/vals.length;vals.forEach((v,i)=>{const bw=Math.min(70,gap*.35);const bh=(h-90)*(v[1]/max);const xx=gap*i+gap/2-bw/2;ctx.fillStyle=v[2];ctx.fillRect(xx,h-42-bh,bw,bh);ctx.fillStyle='#062b46';ctx.font='700 12px Segoe UI';ctx.fillText(`${v[1].toFixed(2)} kWh`,xx-5,h-52-bh);ctx.fillStyle='#7893a5';ctx.fillText(v[0],xx+4,h-18);});}
+function drawEnergyBars(){
+  const canvas=$('barChart');if(!canvas||!energy)return;const {ctx,w,h}=canvasSize(canvas);ctx.clearRect(0,0,w,h);
+  const m=energy.meta||{},x=energy.matrix||{},c=energy.combined||{};
+  const groups=[
+    ['Solar','solarKwh',COLORS.solar],['Load','loadKwh',COLORS.load],['Import','importKwh',COLORS.import],['Export','exportKwh',COLORS.grid]
+  ];
+  const max=Math.max(1,...groups.flatMap(([,key])=>[finite(m[key]),finite(x[key]),finite(c[key])]));
+  const left=32,right=18,top=28,bottom=52,groupW=(w-left-right)/groups.length;
+  ctx.strokeStyle='#dce9ef';ctx.lineWidth=1;for(let i=0;i<4;i++){const yy=top+i*(h-top-bottom)/3;ctx.beginPath();ctx.moveTo(left,yy);ctx.lineTo(w-right,yy);ctx.stroke();}
+  groups.forEach(([label,key],gi)=>{
+    const vals=[finite(m[key]),finite(x[key]),finite(c[key])];
+    const center=left+groupW*(gi+.5);const bw=Math.min(26,groupW*.17),gap=6;
+    const colors=[COLORS.meta,COLORS.matrix,'#062b46'];
+    vals.forEach((v,j)=>{const bh=(h-top-bottom)*(v/max);const xx=center+(j-1)*(bw+gap)-bw/2;const yy=h-bottom-bh;ctx.fillStyle=colors[j];ctx.fillRect(xx,yy,bw,bh);if(v>0){ctx.fillStyle='#062b46';ctx.font='700 10px Segoe UI';ctx.textAlign='center';ctx.fillText(v.toFixed(1),xx+bw/2,Math.max(12,yy-5));}});
+    ctx.fillStyle='#7893a5';ctx.font='700 11px Segoe UI';ctx.textAlign='center';ctx.fillText(label,center,h-20);
+  });ctx.textAlign='start';
+}
+function drawBars(){drawEnergyBars();}
+
 function drawAll(){
   const m=histFor('meta'),x=histFor('matrix'),c=mergeHistory();
   const combinedSeries=[{color:COLORS.solar,data:c.map(p=>({v:p.solarW}))},{color:COLORS.load,data:c.map(p=>({v:p.loadW+p.smartLoadW}))},{color:COLORS.grid,data:c.map(p=>({v:-p.gridW}))},{color:COLORS.smart,data:c.map(p=>({v:p.smartLoadW}))}];
@@ -171,6 +223,6 @@ function drawAll(){
   drawLineChart('matrixPvChart',[{color:COLORS.solar,data:x.map(p=>({v:p.pv1W}))},{color:COLORS.matrix,data:x.map(p=>({v:p.pv2W}))}]); drawBars();
 }
 
-async function start(){await Promise.allSettled([loadLive(),loadHistory(activeHours),loadWeather()]);setInterval(loadLive,10000);setInterval(()=>loadHistory(activeHours),60000);setInterval(loadWeather,600000);}
+async function start(){await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadWeather()]);setInterval(loadLive,10000);setInterval(()=>loadHistory(activeHours),60000);setInterval(()=>loadEnergy(activeEnergyPeriod),60000);setInterval(loadWeather,600000);}
 window.addEventListener('resize',()=>requestAnimationFrame(drawAll));
 start();
