@@ -8,6 +8,10 @@ services:
     envVars:
       - key: META_API_BASE
         value: https://inverterzone-dashboard.onrender.com
+      - key: META_DASHBOARD_USER
+        value: admin
+      - key: META_DASHBOARD_PASSWORD
+        sync: false
       - key: MATRIX_API_BASE
         value: https://fronus-matrix-dashboard.onrender.com
       - key: ELECTRICITY_RATE_PKR

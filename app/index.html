@@ -1,1 +1,115 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Raja Fraz Master Dashboard</title><link rel="stylesheet" href="styles.css"></head><body><nav class="top"><button class="tab active" data-view="dashboard">▦ Dashboard</button><button class="tab" data-view="charts">⌁ Charts</button><button class="tab" data-view="totals">↯ Totals</button><button class="tab" data-view="systems">▣ Systems</button><button class="tab" data-view="alerts">⚠ Alerts <b id="alertCount">0</b></button><div class="brand">⚡ RAJA FRAZ MASTER</div></nav><header class="hero"><div class="siteIcon">⚡</div><div><div class="over">MASTER SITE COMMAND CENTER</div><h1>Raja Fraz Solar Master Dashboard</h1><p>Meta PV9000 + Matrix 6K combined live monitoring</p></div><div class="chips"><div class="chip" id="weather">☁ Gujrat</div><div class="chip live" id="liveChip">● CONNECTING</div><div class="chip"><b id="clock">--:--:--</b><small id="date">--</small></div></div></header><main><section id="dashboard" class="view active"><div class="master-grid"><section class="panel left"><div class="quad"><div class="tile"><i>☀</i><span>Combined Solar</span><b id="cSolar">--</b><small>Meta + Matrix PV</small></div><div class="tile"><i>⌂</i><span>Total Load</span><b id="cLoad">--</b><small>house + inverter load</small></div><div class="tile"><i>♜</i><span>Grid</span><b id="cGrid">--</b><small id="cGridMode">checking</small></div><div class="tile"><i>▰</i><span>Battery</span><b id="cBattery">--</b><small>Matrix battery</small></div></div><div class="gauges"><div class="gcard"><h3>Total Load</h3><svg viewBox="0 0 220 130"><path class="track" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="gLoad" class="val blue" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="gLoadText">--</b><small>0 W <span>12 kW</span></small></div><div class="gcard"><h3>Solar PV</h3><svg viewBox="0 0 220 130"><path class="track" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="gSolar" class="val yellow" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="gSolarText">--</b><small>0 W <span>11.1 kWp</span></small></div><div class="gcard"><h3>Grid Import / Export</h3><svg viewBox="0 0 220 130"><path class="track" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="gGrid" class="val red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="gGridText">--</b><small id="gGridSub">import/export</small></div><div class="gcard"><h3>Smart Load</h3><svg viewBox="0 0 220 130"><path class="track" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="gSmart" class="val orange" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="gSmartText">--</b><small>AC / motor heavy load</small></div></div><div class="strip"><div><span>META SOLAR</span><b id="metaMini">--</b></div><div><span>MATRIX SOLAR</span><b id="matrixMini">--</b></div><div><span>SMART LOAD</span><b id="smartMini">--</b></div><div><span>SYSTEM HEALTH</span><b>Excellent · 100/100</b></div></div></section><section class="panel chart big"><h2>Master overview</h2><p>Solar · combined load · grid · smart load</p><canvas id="overviewChart"></canvas></section><aside class="side"><section class="panel chart"><h2>Grid Power</h2><canvas id="gridChart"></canvas></section><section class="panel chart"><h2>PV Split</h2><canvas id="pvChart"></canvas></section></aside></div><div class="cards"><div class="kpi meta"><span>Fronus Meta PV9000</span><b id="metaStatus">--</b><small id="metaLine">--</small></div><div class="kpi matrix"><span>Fronus Matrix 6K</span><b id="matrixStatus">--</b><small id="matrixLine">--</small></div><div class="kpi"><span>Today Solar</span><b id="todaySolar">--</b><small>combined production</small></div><div class="kpi"><span>Today Load</span><b id="todayLoad">--</b><small>combined consumption</small></div><div class="kpi"><span>Today Import</span><b class="redText" id="todayImport">--</b><small>utility import</small></div><div class="kpi"><span>Today Export</span><b class="greenText" id="todayExport">--</b><small>utility export</small></div></div></section><section id="charts" class="view"><div class="page"><h2>Professional Live Charts</h2><p>Both systems and combined site view.</p><canvas id="fullChart" class="tall"></canvas></div></section><section id="totals" class="view"><div class="page"><h2>Master Energy Performance</h2><div class="cards four"><div class="kpi"><span>Solar Production</span><b id="totSolar">--</b><small>today</small></div><div class="kpi"><span>Load Consumed</span><b id="totLoad">--</b><small>today</small></div><div class="kpi"><span>Grid Import</span><b class="redText" id="totImport">--</b><small>today</small></div><div class="kpi"><span>Grid Export</span><b class="greenText" id="totExport">--</b><small>today</small></div></div><canvas id="barChart" class="bar"></canvas><div class="valueBox">Estimated solar value: <b id="solarValue">--</b></div></div></section><section id="systems" class="view"><div class="page"><h2>Individual Systems</h2><div class="systemGrid"><article class="systemCard"><h3>Fronus Meta PV9000</h3><dl id="metaDetails"></dl></article><article class="systemCard"><h3>Fronus Matrix 6K</h3><dl id="matrixDetails"></dl></article></div></div></section><section id="alerts" class="view"><div class="page"><h2>Alerts & Operating Limits</h2><div class="ok">✓ All monitored values are normal</div><table><thead><tr><th>System</th><th>Condition</th><th>Reading</th></tr></thead><tbody id="alertsBody"><tr><td colspan="3">No active alerts</td></tr></tbody></table></div></section></main><script src="dashboard.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raja Fraz Master Solar Command Center</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="topbar">
+    <div class="navtabs">
+      <button class="navtab active" data-view="dashboard">▦ Dashboard</button>
+      <button class="navtab" data-view="meta">☀ Meta PV9000</button>
+      <button class="navtab" data-view="combined">⚡ Combined</button>
+      <button class="navtab" data-view="matrix">▰ Matrix 6K</button>
+      <button class="navtab" data-view="charts">⌁ Charts</button>
+      <button class="navtab" data-view="totals">↯ Totals</button>
+      <button class="navtab" data-view="health">⚠ Health <b id="alertCount">0</b></button>
+    </div>
+    <div class="masterBrand"><span>⚡</span> RAJA FRAZ MASTER</div>
+  </nav>
+
+  <header class="siteHeader">
+    <div class="brandPortrait"><img src="assets/raja-fraz-logo.jpeg" alt="Raja Fraz brand portrait"></div>
+    <div class="siteTitles">
+      <div class="eyebrow">MASTER SOLAR COMMAND CENTER</div>
+      <h1>Raja Fraz Solar Master Dashboard</h1>
+      <p>Fronus Meta PV9000 + Fronus Matrix 6K • individual systems and combined site intelligence</p>
+    </div>
+    <div class="headerStatus">
+      <div class="statusChip" id="weather">☁ Gujrat</div>
+      <div class="statusChip live" id="liveChip">● CONNECTING</div>
+      <div class="statusChip timeChip"><b id="clock">--:--:--</b><small id="date">--</small></div>
+    </div>
+  </header>
+
+  <main>
+    <section id="dashboard" class="view active">
+      <div class="sectionIntro">
+        <div><div class="eyebrow">LIVE SITE OVERVIEW</div><h2>Two systems. One command center.</h2></div>
+        <div class="freshness"><span>Dashboard poll <b>10s</b></span><span>Matrix cloud frame <b>~60s</b></span></div>
+      </div>
+
+      <div class="triad">
+        <article class="systemPanel metaPanel">
+          <div class="panelHead"><div><span class="systemDot metaDot"></span><strong>Fronus Meta PV9000</strong><small id="metaFresh">Waiting for data</small></div><b id="metaOnline" class="state">CHECKING</b></div>
+          <div class="heroMetric"><span>Solar PV</span><b id="metaSolarHero">--</b><small id="metaPvSplit">PV1 -- • PV2 --</small></div>
+          <div class="gaugeGrid compact">
+            <div class="gaugeCard"><h3>Load</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="metaLoadGauge" class="gValue blue" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="metaLoadGaugeText">--</b><small><span>0 W</span><span>6 kW</span></small></div>
+            <div class="gaugeCard"><h3>Solar</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="metaSolarGauge" class="gValue amber" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="metaSolarGaugeText">--</b><small><span>0 W</span><span>6.78 kWp</span></small></div>
+            <div class="gaugeCard wide"><h3>Grid Import / Export</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="metaGridGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="metaGridGaugeText">--</b><small><span id="metaGridMode">--</span><span id="metaGridV">-- V</span></small></div>
+          </div>
+          <div class="miniStrip"><div><span>Today solar</span><b id="metaTodaySolar">--</b></div><div><span>Temperature</span><b id="metaTemp">--</b></div><div><span>Health</span><b>100/100</b></div></div>
+        </article>
+
+        <article class="combinedPanel">
+          <div class="combinedHead"><div><div class="eyebrow">COMBINED SITE</div><h3>Total Solar Estate</h3></div><div class="powerBadge"><span id="combinedMode">BALANCING</span><b id="combinedNet">--</b></div></div>
+          <div class="combinedHeroGrid">
+            <div class="megaMetric solarMetric"><span>Total Solar</span><b id="combinedSolarHero">--</b><small>Meta + Matrix</small></div>
+            <div class="megaMetric loadMetric"><span>Site Demand</span><b id="combinedDemandHero">--</b><small>Normal loads + Smart Load</small></div>
+          </div>
+          <div class="gaugeGrid centerGauges">
+            <div class="gaugeCard"><h3>Total Solar</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedSolarGauge" class="gValue amber" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedSolarGaugeText">--</b><small><span>0 W</span><span>11.14 kWp</span></small></div>
+            <div class="gaugeCard"><h3>Total Demand</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedLoadGauge" class="gValue blue" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedLoadGaugeText">--</b><small><span>0 W</span><span>12 kW</span></small></div>
+            <div class="gaugeCard"><h3>Grid</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedGridGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedGridGaugeText">--</b><small><span id="combinedGridMode">--</span><span>12 kW scale</span></small></div>
+            <div class="gaugeCard"><h3>Smart Load</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedSmartGauge" class="gValue orange" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedSmartGaugeText">--</b><small><span>AC / Motor</span><span>6 kW</span></small></div>
+          </div>
+          <div class="flowSummary"><div><span>META SHARE</span><b id="metaShare">--%</b></div><div><span>MATRIX SHARE</span><b id="matrixShare">--%</b></div><div><span>BATTERY</span><b id="masterBattery">--</b></div><div><span>SYSTEM HEALTH</span><b id="masterHealth">--</b></div></div>
+        </article>
+
+        <article class="systemPanel matrixPanel">
+          <div class="panelHead"><div><span class="systemDot matrixDot"></span><strong>Fronus Matrix 6K</strong><small id="matrixFresh">Waiting for data</small></div><b id="matrixOnline" class="state">CHECKING</b></div>
+          <div class="heroMetric"><span>Solar PV</span><b id="matrixSolarHero">--</b><small id="matrixPvSplit">PV1 -- • PV2 --</small></div>
+          <div class="gaugeGrid compact">
+            <div class="gaugeCard"><h3>Load</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="matrixLoadGauge" class="gValue blue" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="matrixLoadGaugeText">--</b><small><span>0 W</span><span>6 kW</span></small></div>
+            <div class="gaugeCard"><h3>Solar</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="matrixSolarGauge" class="gValue amber" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="matrixSolarGaugeText">--</b><small><span>0 W</span><span>4.36 kWp</span></small></div>
+            <div class="gaugeCard"><h3>Grid</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="matrixGridGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="matrixGridGaugeText">--</b><small><span id="matrixGridMode">--</span><span id="matrixGridV">-- V</span></small></div>
+            <div class="gaugeCard"><h3>Smart Load</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="matrixSmartGauge" class="gValue orange" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="matrixSmartGaugeText">--</b><small><span>AC / Motor</span><span>6 kW</span></small></div>
+          </div>
+          <div class="miniStrip"><div><span>Battery</span><b id="matrixBattery">--</b></div><div><span>Transformer</span><b id="matrixTemp">--</b></div><div><span>Today solar</span><b id="matrixTodaySolar">--</b></div></div>
+        </article>
+      </div>
+
+      <div class="dashboardCharts">
+        <article class="chartPanel mainChart"><div class="chartHead"><div><span>POWER OVERVIEW</span><h3>Combined Solar • Demand • Grid</h3></div><div class="legend"><i class="lg amberBg"></i>Solar <i class="lg blueBg"></i>Demand <i class="lg greenBg"></i>Grid export / import</div></div><canvas id="overviewChart"></canvas></article>
+        <article class="chartPanel"><div class="chartHead"><div><span>SYSTEM SPLIT</span><h3>Meta vs Matrix Solar</h3></div></div><canvas id="systemSplitChart"></canvas></article>
+      </div>
+
+      <div class="summaryCards">
+        <div class="summaryCard"><span>TODAY SOLAR</span><b id="todaySolar">--</b><small>Combined production</small></div>
+        <div class="summaryCard"><span>TODAY LOAD</span><b id="todayLoad">--</b><small>Site consumption</small></div>
+        <div class="summaryCard importCard"><span>GRID IMPORT</span><b id="todayImport">--</b><small>Today</small></div>
+        <div class="summaryCard exportCard"><span>GRID EXPORT</span><b id="todayExport">--</b><small>Today</small></div>
+        <div class="summaryCard"><span>SOLAR VALUE</span><b id="solarValue">--</b><small>Estimated at configured rate</small></div>
+        <div class="summaryCard"><span>CONNECTED SYSTEMS</span><b id="systemsOnline">--</b><small>Meta + Matrix</small></div>
+      </div>
+      <div id="masterNotice" class="notice" hidden></div>
+    </section>
+
+    <section id="meta" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SYSTEM 01</div><h2>Fronus Meta PV9000</h2><p>Dedicated InverterZone telemetry view.</p></div><span class="statusPill" id="metaPageStatus">CHECKING</span></div><div id="metaPage" class="systemDetailGrid"></div><div class="detailCharts"><article class="chartPanel"><div class="chartHead"><div><span>META POWER</span><h3>Solar • Load • Grid</h3></div></div><canvas id="metaChart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>PV STRINGS</span><h3>PV1 vs PV2</h3></div></div><canvas id="metaPvChart"></canvas></article></div></div></section>
+
+    <section id="combined" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">MASTER SITE</div><h2>Combined Energy Center</h2><p>Aggregated production, demand, grid exchange and energy balance.</p></div><span class="statusPill" id="combinedPageStatus">CHECKING</span></div><div id="combinedPage" class="systemDetailGrid"></div><article class="chartPanel fullChartPanel"><div class="chartHead"><div><span>COMBINED POWER</span><h3>Total Solar • Site Demand • Grid • Smart Load</h3></div></div><canvas id="combinedChart"></canvas></article></div></section>
+
+    <section id="matrix" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SYSTEM 02</div><h2>Fronus Matrix 6K</h2><p>SOLARMAN Business telemetry with battery and Smart Load.</p></div><span class="statusPill" id="matrixPageStatus">CHECKING</span></div><div id="matrixPage" class="systemDetailGrid"></div><div class="detailCharts"><article class="chartPanel"><div class="chartHead"><div><span>MATRIX POWER</span><h3>Solar • Load • Grid • Smart Load</h3></div></div><canvas id="matrixChart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>PV STRINGS</span><h3>PV1 vs PV2</h3></div></div><canvas id="matrixPvChart"></canvas></article></div></div></section>
+
+    <section id="charts" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">HISTORICAL TELEMETRY</div><h2>Professional Performance Charts</h2><p>Individual and combined site trends.</p></div><div class="rangeButtons"><button data-hours="1">1H</button><button data-hours="6">6H</button><button class="active" data-hours="24">24H</button><button data-hours="168">7D</button></div></div><article class="chartPanel fullChartPanel tall"><div class="chartHead"><div><span>MASTER POWER</span><h3>Solar • Site Demand • Grid • Smart Load</h3></div></div><canvas id="fullChart"></canvas></article><div class="detailCharts"><article class="chartPanel"><div class="chartHead"><div><span>META</span><h3>PV9000 power history</h3></div></div><canvas id="fullMetaChart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>MATRIX</span><h3>Matrix 6K power history</h3></div></div><canvas id="fullMatrixChart"></canvas></article></div></div></section>
+
+    <section id="totals" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SERVER ENERGY TOTALS</div><h2>Energy Performance</h2><p>Current daily totals from both systems.</p></div></div><div class="totalsGrid"><div class="totalCard solarTotal"><span>SOLAR PRODUCTION</span><b id="totSolar">--</b><small>Combined today</small></div><div class="totalCard loadTotal"><span>LOAD CONSUMED</span><b id="totLoad">--</b><small>Combined today</small></div><div class="totalCard importTotal"><span>GRID IMPORT</span><b id="totImport">--</b><small>Combined today</small></div><div class="totalCard exportTotal"><span>GRID EXPORT</span><b id="totExport">--</b><small>Combined today</small></div></div><div class="totalsBody"><article class="chartPanel totalChart"><div class="chartHead"><div><span>ENERGY BALANCE</span><h3>Today</h3></div></div><canvas id="barChart"></canvas></article><aside class="valuePanel"><span>ESTIMATED SOLAR VALUE</span><div><small>PKR</small><b id="solarValueBig">--</b></div><p>Based on the configured electricity rate.</p><hr><dl><dt>Rate</dt><dd id="rateValue">--</dd><dt>Meta solar</dt><dd id="totMetaSolar">--</dd><dt>Matrix solar</dt><dd id="totMatrixSolar">--</dd></dl></aside></div></div></section>
+
+    <section id="health" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SYSTEM SUPERVISION</div><h2>Health & Connectivity</h2><p>Connection status, API diagnostics and operating summary.</p></div><span class="statusPill good" id="healthPill">CHECKING</span></div><div class="healthGrid"><article class="healthCard"><h3>Meta PV9000</h3><div id="metaHealth"></div></article><article class="healthCard masterHealthCard"><h3>Master Site</h3><div id="combinedHealth"></div></article><article class="healthCard"><h3>Matrix 6K</h3><div id="matrixHealth"></div></article></div><div class="notice healthNotice" id="diagnosticNotice">Waiting for diagnostics…</div></div></section>
+  </main>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
