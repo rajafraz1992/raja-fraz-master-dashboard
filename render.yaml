@@ -1,3 +1,9 @@
+databases:
+  - name: raja-fraz-master-history
+    plan: free
+    region: oregon
+    databaseName: rajafraz_master
+
 services:
   - type: web
     name: raja-fraz-master-dashboard
@@ -16,3 +22,9 @@ services:
         value: https://fronus-matrix-dashboard.onrender.com
       - key: ELECTRICITY_RATE_PKR
         value: 60
+      - key: HISTORY_SAMPLE_SECONDS
+        value: 60
+      - key: DATABASE_URL
+        fromDatabase:
+          name: raja-fraz-master-history
+          property: connectionString

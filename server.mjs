@@ -3,7 +3,9 @@ import { readFileSync, existsSync } from "node:fs";
 import { extname, join, resolve, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import pg from "pg";
 
+const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const APP_DIR = join(__dirname, "app");
@@ -13,6 +15,14 @@ const META_DASHBOARD_USER = String(process.env.META_DASHBOARD_USER || "admin").t
 const META_DASHBOARD_PASSWORD = String(process.env.META_DASHBOARD_PASSWORD || "");
 const MATRIX_API_BASE = String(process.env.MATRIX_API_BASE || "https://fronus-matrix-dashboard.onrender.com").replace(/\/$/, "");
 const RATE = Number(process.env.ELECTRICITY_RATE_PKR || 60);
+const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
+const HISTORY_SAMPLE_SECONDS = Math.max(30, Number(process.env.HISTORY_SAMPLE_SECONDS || 60));
+
+const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 4 }) : null;
+let dbReady = false;
+let lastStoredAt = 0;
+let lastLiveCache = null;
+let lastLiveCacheAt = 0;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -66,7 +76,7 @@ async function getJson(url, { timeoutMs = 16000, headers = {} } = {}) {
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { "User-Agent": "Raja-Fraz-Master/2.0", ...headers }
+      headers: { "User-Agent": "Raja-Fraz-Master/3.0", ...headers }
     });
     const text = await response.text();
     let data;
@@ -162,7 +172,92 @@ function metaAuthHint(error) {
   if (error.status === 401) return "Meta dashboard requires Basic Auth. Set META_DASHBOARD_PASSWORD in this Render service to the same password used by InverterZone.";
   return error.message;
 }
-async function fetchLive() {
+
+async function initDb() {
+  if (!pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS master_samples (
+        id BIGSERIAL PRIMARY KEY,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        meta_online BOOLEAN NOT NULL DEFAULT FALSE,
+        matrix_online BOOLEAN NOT NULL DEFAULT FALSE,
+        meta_solar_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        meta_load_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        meta_grid_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        meta_pv1_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        meta_pv2_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        meta_temp_c DOUBLE PRECISION NOT NULL DEFAULT 0,
+        meta_today_solar DOUBLE PRECISION NOT NULL DEFAULT 0,
+        matrix_solar_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        matrix_load_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        matrix_grid_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        matrix_pv1_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        matrix_pv2_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        matrix_smart_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        matrix_battery_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        matrix_battery_pct DOUBLE PRECISION,
+        matrix_temp_c DOUBLE PRECISION NOT NULL DEFAULT 0,
+        matrix_today_solar DOUBLE PRECISION NOT NULL DEFAULT 0,
+        combined_solar_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        combined_demand_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        combined_grid_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        combined_smart_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        combined_today_solar DOUBLE PRECISION NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS master_samples_captured_at_idx ON master_samples (captured_at DESC);
+    `);
+    dbReady = true;
+    return true;
+  } catch (error) {
+    console.error("Postgres init failed:", error.message);
+    dbReady = false;
+    return false;
+  }
+}
+
+async function storeSample(live, force = false) {
+  if (!pool || !dbReady || !live?.systems) return false;
+  const now = Date.now();
+  if (!force && now - lastStoredAt < HISTORY_SAMPLE_SECONDS * 1000 * 0.9) return false;
+  const m = live.systems.meta || {};
+  const x = live.systems.matrix || {};
+  const c = live.systems.combined || {};
+  try {
+    await pool.query(`
+      INSERT INTO master_samples (
+        captured_at, meta_online, matrix_online,
+        meta_solar_w, meta_load_w, meta_grid_w, meta_pv1_w, meta_pv2_w, meta_temp_c, meta_today_solar,
+        matrix_solar_w, matrix_load_w, matrix_grid_w, matrix_pv1_w, matrix_pv2_w, matrix_smart_w,
+        matrix_battery_w, matrix_battery_pct, matrix_temp_c, matrix_today_solar,
+        combined_solar_w, combined_demand_w, combined_grid_w, combined_smart_w, combined_today_solar
+      ) VALUES (
+        NOW(), $1, $2,
+        $3, $4, $5, $6, $7, $8, $9,
+        $10, $11, $12, $13, $14, $15,
+        $16, $17, $18, $19,
+        $20, $21, $22, $23, $24
+      )
+    `, [
+      Boolean(live.systems.meta), Boolean(live.systems.matrix),
+      num(m.solarW), num(m.loadW), num(m.gridW), num(m.pv1W), num(m.pv2W), num(m.temp), num(m.todaySolar),
+      num(x.solarW), num(x.loadW), num(x.gridW), num(x.pv1W), num(x.pv2W), num(x.smartLoadW),
+      num(x.batteryW), x.batteryPct == null ? null : num(x.batteryPct), num(x.transformer || x.temp), num(x.todaySolar),
+      num(c.solarW), num(c.siteDemandW), num(c.gridW), num(c.smartLoadW), num(c.todaySolar)
+    ]);
+    lastStoredAt = now;
+    return true;
+  } catch (error) {
+    console.error("History insert failed:", error.message);
+    return false;
+  }
+}
+
+async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
+  if (lastLiveCache && Date.now() - lastLiveCacheAt < cacheMs) {
+    if (store) storeSample(lastLiveCache).catch(() => {});
+    return lastLiveCache;
+  }
   const systems = {};
   const errors = {};
   const [metaResult, matrixResult] = await Promise.allSettled([
@@ -174,11 +269,17 @@ async function fetchLive() {
   if (matrixResult.status === "fulfilled") systems.matrix = matrixResult.value;
   else errors.matrix = matrixResult.reason.message;
   systems.combined = combine(systems.meta, systems.matrix);
-  return {
+  const result = {
     ok: Boolean(systems.meta || systems.matrix), complete: Boolean(systems.meta && systems.matrix),
-    systems, errors, updatedAt: Date.now(), refreshSeconds: 10, matrixFrameSeconds: 60, rate: RATE
+    systems, errors, updatedAt: Date.now(), refreshSeconds: 10, matrixFrameSeconds: 60, rate: RATE,
+    history: { online: Boolean(pool && dbReady), storage: pool && dbReady ? "PostgreSQL" : "source/fallback", sampleSeconds: HISTORY_SAMPLE_SECONDS }
   };
+  lastLiveCache = result;
+  lastLiveCacheAt = Date.now();
+  if (store) await storeSample(result);
+  return result;
 }
+
 function normalizeHistory(payload) {
   const source = payload?.data || unwrap(payload)?.data || [];
   if (!Array.isArray(source)) return [];
@@ -188,7 +289,39 @@ function normalizeHistory(payload) {
     pv1W: num(p.pv1W), pv2W: num(p.pv2W), smartLoadW: num(p.smartLoadW)
   }));
 }
+
+async function dbHistory(hours) {
+  if (!pool || !dbReady) return null;
+  const maxRows = hours <= 24 ? 3000 : hours <= 168 ? 12000 : 22000;
+  try {
+    const { rows } = await pool.query(`
+      SELECT * FROM master_samples
+      WHERE captured_at >= NOW() - ($1::text || ' hours')::interval
+      ORDER BY captured_at ASC
+      LIMIT $2
+    `, [String(hours), maxRows]);
+    const meta = rows.map((r) => ({
+      timestamp: new Date(r.captured_at).getTime(), solarW: num(r.meta_solar_w), loadW: num(r.meta_load_w), gridW: num(r.meta_grid_w),
+      pv1W: num(r.meta_pv1_w), pv2W: num(r.meta_pv2_w), smartLoadW: 0, tempC: num(r.meta_temp_c)
+    }));
+    const matrix = rows.map((r) => ({
+      timestamp: new Date(r.captured_at).getTime(), solarW: num(r.matrix_solar_w), loadW: num(r.matrix_load_w), gridW: num(r.matrix_grid_w),
+      pv1W: num(r.matrix_pv1_w), pv2W: num(r.matrix_pv2_w), smartLoadW: num(r.matrix_smart_w), tempC: num(r.matrix_temp_c)
+    }));
+    const combined = rows.map((r) => ({
+      timestamp: new Date(r.captured_at).getTime(), solarW: num(r.combined_solar_w), loadW: num(r.combined_demand_w), gridW: num(r.combined_grid_w),
+      smartLoadW: num(r.combined_smart_w)
+    }));
+    return { ok: true, meta, matrix, combined, storage: "postgres", samples: rows.length, sampleSeconds: HISTORY_SAMPLE_SECONDS };
+  } catch (error) {
+    console.error("History query failed:", error.message);
+    return null;
+  }
+}
+
 async function fetchHistory(hours = 24) {
+  const stored = await dbHistory(hours);
+  if (stored) return stored;
   const [metaResult, matrixResult] = await Promise.allSettled([
     getMetaJson(`/api/history?hours=${hours}`),
     getJson(`${MATRIX_API_BASE}/api/history?hours=${hours}`)
@@ -197,12 +330,25 @@ async function fetchHistory(hours = 24) {
     ok: true,
     meta: metaResult.status === "fulfilled" ? normalizeHistory(metaResult.value) : [],
     matrix: matrixResult.status === "fulfilled" ? normalizeHistory(matrixResult.value) : [],
+    combined: [], storage: "source-fallback", samples: 0,
     errors: {
       ...(metaResult.status === "rejected" ? { meta: metaAuthHint(metaResult.reason) } : {}),
       ...(matrixResult.status === "rejected" ? { matrix: matrixResult.reason.message } : {})
     }
   };
 }
+
+async function historyStats() {
+  if (!pool || !dbReady) return { online: false, storage: "fallback", samples: 0 };
+  try {
+    const { rows } = await pool.query(`SELECT COUNT(*)::bigint AS count, MIN(captured_at) AS first_at, MAX(captured_at) AS last_at FROM master_samples`);
+    const r = rows[0] || {};
+    return { online: true, storage: "PostgreSQL", samples: Number(r.count || 0), firstAt: r.first_at, lastAt: r.last_at, sampleSeconds: HISTORY_SAMPLE_SECONDS };
+  } catch (error) {
+    return { online: false, storage: "PostgreSQL error", samples: 0, error: error.message };
+  }
+}
+
 async function fetchWeather() {
   try {
     const payload = await getJson(`${MATRIX_API_BASE}/api/weather`, { timeoutMs: 8000 });
@@ -223,11 +369,17 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     if (url.pathname === "/api/master/live") return json(res, 200, await fetchLive());
     if (url.pathname === "/api/master/history") return json(res, 200, await fetchHistory(Math.max(1, Math.min(720, num(url.searchParams.get("hours"), 24)))));
+    if (url.pathname === "/api/master/history/status") return json(res, 200, await historyStats());
+    if (url.pathname === "/api/master/collect") {
+      const live = await fetchLive({ store: false, cacheMs: 0 });
+      const stored = await storeSample(live, true);
+      return json(res, 200, { ok: true, stored, updatedAt: live.updatedAt, history: await historyStats() });
+    }
     if (url.pathname === "/api/master/weather") return json(res, 200, await fetchWeather());
     if (url.pathname === "/api/health") return json(res, 200, {
-      success: true, service: "Raja Fraz Master Solar Command Center V2",
+      success: true, service: "Raja Fraz Master Solar Command Center V3",
       meta: META_API_BASE, matrix: MATRIX_API_BASE,
-      metaAuthConfigured: Boolean(META_DASHBOARD_PASSWORD)
+      metaAuthConfigured: Boolean(META_DASHBOARD_PASSWORD), history: await historyStats()
     });
     const path = staticPath(url.pathname);
     if (!path || !existsSync(path)) { res.writeHead(404, { "Content-Type": "text/plain" }); return res.end("Not found"); }
@@ -238,4 +390,18 @@ const server = http.createServer(async (req, res) => {
     json(res, 500, { ok: false, error: error.message });
   }
 });
-server.listen(PORT, () => console.log(`Raja Fraz Master Solar Command Center V2 running on ${PORT}`));
+
+await initDb();
+server.listen(PORT, () => console.log(`Raja Fraz Master Solar Command Center V3 running on ${PORT}`));
+
+setInterval(async () => {
+  try {
+    if (!dbReady) await initDb();
+    if (dbReady) {
+      const live = await fetchLive({ store: false, cacheMs: 0 });
+      await storeSample(live);
+    }
+  } catch (error) {
+    console.error("Background collector:", error.message);
+  }
+}, HISTORY_SAMPLE_SECONDS * 1000).unref();

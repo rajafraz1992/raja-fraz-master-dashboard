@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 const COLORS = { solar:'#f6b526', load:'#357be8', grid:'#20ad70', import:'#f04958', smart:'#f68b22', meta:'#357be8', matrix:'#7657f2' };
 let live = null;
-let history = { meta: [], matrix: [] };
+let history = { meta: [], matrix: [], combined: [], storage: 'loading', samples: 0 };
 let activeHours = 24;
 
 function set(id, value) { const el = $(id); if (el) el.textContent = value; }
@@ -39,7 +39,14 @@ async function loadLive(){
   }catch(error){set('liveChip','● ERROR');}
 }
 async function loadHistory(hours=24){
-  try{const response=await fetch(`/api/master/history?hours=${hours}`,{cache:'no-store'});history=await response.json();drawAll();}catch(_error){}
+  try{
+    const response=await fetch(`/api/master/history?hours=${hours}`,{cache:'no-store'});
+    history=await response.json();
+    const online=history.storage==='postgres';
+    set('historyChip', online ? `History • ${finite(history.samples)} online samples` : 'History • source fallback');
+    $('historyChip')?.classList.toggle('onlineHistory',online);
+    drawAll();
+  }catch(_error){ set('historyChip','History • unavailable'); }
 }
 async function loadWeather(){
   try{const r=await fetch('/api/master/weather',{cache:'no-store'});const w=await r.json();const d=w.data||{};const t=d.temperature??d.temperature_2m??d.current?.temperature_2m;if(Number.isFinite(Number(t)))set('weather',`☁ ${Math.round(Number(t))}° Gujrat`);}catch(_error){}
@@ -118,7 +125,8 @@ function healthRows(rows){return rows.map(([k,v,ok])=>`<div class="healthRow"><s
 function renderHealth(m,x,c,errors){
   $('metaHealth').innerHTML=healthRows([['API connection',m?'ONLINE':'OFFLINE',Boolean(m)],['Last update',m?ageText(m.updatedAt):'--',Boolean(m)],['Grid status',m?gridMode(m.gridW):'--',Boolean(m)],['Health',m?'Excellent':'Needs attention',Boolean(m)]]);
   $('matrixHealth').innerHTML=healthRows([['API connection',x?'ONLINE':'OFFLINE',Boolean(x)],['Last update',x?ageText(x.updatedAt):'--',Boolean(x)],['Battery',x?fmtPct(x.batteryPct):'--',Boolean(x)],['Smart load',x?fmtPower(x.smartLoadW):'--',Boolean(x)]]);
-  $('combinedHealth').innerHTML=healthRows([['Connected systems',`${[m,x].filter(Boolean).length}/2`,Boolean(m&&x)],['Total solar',fmtPower(c.solarW),Boolean(m||x)],['Grid',gridMode(c.gridW),Boolean(m||x)],['Overall',(m&&x)?'Excellent':'Degraded',Boolean(m&&x)]]);
+  const historyOnline=Boolean(live?.history?.online);
+  $('combinedHealth').innerHTML=healthRows([['Connected systems',`${[m,x].filter(Boolean).length}/2`,Boolean(m&&x)],['Total solar',fmtPower(c.solarW),Boolean(m||x)],['Grid',gridMode(c.gridW),Boolean(m||x)],['Online history',historyOnline?'PostgreSQL ACTIVE':'Fallback',historyOnline],['Overall',(m&&x)?'Excellent':'Degraded',Boolean(m&&x)]]);
   set('healthPill',(m&&x)?'ALL NORMAL':'ATTENTION'); $('healthPill')?.classList.toggle('good',Boolean(m&&x));
   const messages=[];if(errors.meta)messages.push(`Meta: ${errors.meta}`);if(errors.matrix)messages.push(`Matrix: ${errors.matrix}`);set('diagnosticNotice',messages.length?messages.join(' • '):'✓ Both upstream systems are connected and returning data.');
   set('alertCount',messages.length);
@@ -126,6 +134,14 @@ function renderHealth(m,x,c,errors){
 
 function histFor(kind){return Array.isArray(history?.[kind])?history[kind]:[];}
 function mergeHistory(){
+  const stored=histFor('combined');
+  if(stored.length){
+    const meta=histFor('meta'), matrix=histFor('matrix');
+    return stored.map((p,i)=>({
+      timestamp:p.timestamp, solarW:finite(p.solarW), loadW:finite(p.loadW), gridW:finite(p.gridW), smartLoadW:finite(p.smartLoadW),
+      metaSolarW:finite(meta[i]?.solarW), matrixSolarW:finite(matrix[i]?.solarW)
+    })).slice(-22000);
+  }
   const map=new Map();
   for(const [kind,arr] of [['meta',histFor('meta')],['matrix',histFor('matrix')]])for(const p of arr){
     const t=Math.round(finite(p.timestamp,Date.now())/60000)*60000;

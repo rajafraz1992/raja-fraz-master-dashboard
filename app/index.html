@@ -38,7 +38,7 @@
     <section id="dashboard" class="view active">
       <div class="sectionIntro">
         <div><div class="eyebrow">LIVE SITE OVERVIEW</div><h2>Two systems. One command center.</h2></div>
-        <div class="freshness"><span>Dashboard poll <b>10s</b></span><span>Matrix cloud frame <b>~60s</b></span></div>
+        <div class="freshness"><span>Dashboard poll <b>10s</b></span><span>Matrix cloud frame <b>~60s</b></span><span id="historyChip" class="historyFresh">History <b>checking…</b></span></div>
       </div>
 
       <div class="triad">
@@ -53,8 +53,8 @@
           <div class="miniStrip"><div><span>Today solar</span><b id="metaTodaySolar">--</b></div><div><span>Temperature</span><b id="metaTemp">--</b></div><div><span>Health</span><b>100/100</b></div></div>
         </article>
 
-        <article class="combinedPanel">
-          <div class="combinedHead"><div><div class="eyebrow">COMBINED SITE</div><h3>Total Solar Estate</h3></div><div class="powerBadge"><span id="combinedMode">BALANCING</span><b id="combinedNet">--</b></div></div>
+        <article class="combinedPanel masterFocus">
+          <div class="combinedHead"><div><div class="eyebrow">MASTER TOTAL</div><h3>Combined Solar Estate</h3></div><div class="powerBadge"><span id="combinedMode">BALANCING</span><b id="combinedNet">--</b></div></div>
           <div class="combinedHeroGrid">
             <div class="megaMetric solarMetric"><span>Total Solar</span><b id="combinedSolarHero">--</b><small>Meta + Matrix</small></div>
             <div class="megaMetric loadMetric"><span>Site Demand</span><b id="combinedDemandHero">--</b><small>Normal loads + Smart Load</small></div>
@@ -103,7 +103,7 @@
 
     <section id="matrix" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SYSTEM 02</div><h2>Fronus Matrix 6K</h2><p>SOLARMAN Business telemetry with battery and Smart Load.</p></div><span class="statusPill" id="matrixPageStatus">CHECKING</span></div><div id="matrixPage" class="systemDetailGrid"></div><div class="detailCharts"><article class="chartPanel"><div class="chartHead"><div><span>MATRIX POWER</span><h3>Solar • Load • Grid • Smart Load</h3></div></div><canvas id="matrixChart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>PV STRINGS</span><h3>PV1 vs PV2</h3></div></div><canvas id="matrixPvChart"></canvas></article></div></div></section>
 
-    <section id="charts" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">HISTORICAL TELEMETRY</div><h2>Professional Performance Charts</h2><p>Individual and combined site trends.</p></div><div class="rangeButtons"><button data-hours="1">1H</button><button data-hours="6">6H</button><button class="active" data-hours="24">24H</button><button data-hours="168">7D</button></div></div><article class="chartPanel fullChartPanel tall"><div class="chartHead"><div><span>MASTER POWER</span><h3>Solar • Site Demand • Grid • Smart Load</h3></div></div><canvas id="fullChart"></canvas></article><div class="detailCharts"><article class="chartPanel"><div class="chartHead"><div><span>META</span><h3>PV9000 power history</h3></div></div><canvas id="fullMetaChart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>MATRIX</span><h3>Matrix 6K power history</h3></div></div><canvas id="fullMatrixChart"></canvas></article></div></div></section>
+    <section id="charts" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">HISTORICAL TELEMETRY</div><h2>Professional Performance Charts</h2><p>Individual and combined site trends stored in the master online history database.</p></div><div class="rangeButtons"><button data-hours="1">1H</button><button data-hours="6">6H</button><button class="active" data-hours="24">24H</button><button data-hours="168">7D</button><button data-hours="720">30D</button></div></div><article class="chartPanel fullChartPanel tall"><div class="chartHead"><div><span>MASTER POWER</span><h3>Solar • Site Demand • Grid • Smart Load</h3></div></div><canvas id="fullChart"></canvas></article><div class="detailCharts"><article class="chartPanel"><div class="chartHead"><div><span>META</span><h3>PV9000 power history</h3></div></div><canvas id="fullMetaChart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>MATRIX</span><h3>Matrix 6K power history</h3></div></div><canvas id="fullMatrixChart"></canvas></article></div></div></section>
 
     <section id="totals" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SERVER ENERGY TOTALS</div><h2>Energy Performance</h2><p>Current daily totals from both systems.</p></div></div><div class="totalsGrid"><div class="totalCard solarTotal"><span>SOLAR PRODUCTION</span><b id="totSolar">--</b><small>Combined today</small></div><div class="totalCard loadTotal"><span>LOAD CONSUMED</span><b id="totLoad">--</b><small>Combined today</small></div><div class="totalCard importTotal"><span>GRID IMPORT</span><b id="totImport">--</b><small>Combined today</small></div><div class="totalCard exportTotal"><span>GRID EXPORT</span><b id="totExport">--</b><small>Combined today</small></div></div><div class="totalsBody"><article class="chartPanel totalChart"><div class="chartHead"><div><span>ENERGY BALANCE</span><h3>Today</h3></div></div><canvas id="barChart"></canvas></article><aside class="valuePanel"><span>ESTIMATED SOLAR VALUE</span><div><small>PKR</small><b id="solarValueBig">--</b></div><p>Based on the configured electricity rate.</p><hr><dl><dt>Rate</dt><dd id="rateValue">--</dd><dt>Meta solar</dt><dd id="totMetaSolar">--</dd><dt>Matrix solar</dt><dd id="totMatrixSolar">--</dd></dl></aside></div></div></section>
 
