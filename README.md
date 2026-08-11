@@ -1,35 +1,14 @@
-# Raja Fraz Master Solar Command Center V2
+# Raja Fraz Master Solar Command Center V5
 
-Professional combined monitoring dashboard for:
+Professional combined monitoring for Fronus Meta PV9000 + Fronus Matrix 6K.
 
-- Fronus Meta PV9000 / InverterZone Cloud
-- Fronus Matrix 6K / SOLARMAN Business
-- Combined site totals and live power balance
+## V5 changes
+- Fixed Meta energy totals parsing by recursively unwrapping the InverterZone `/api/energy` response.
+- Today / Yesterday / This month / Last month now combine Meta + Matrix totals.
+- Enlarged the center Master gauges and widened the Combined Site panel.
+- Preserves PostgreSQL online history, live monitoring, Raja Fraz branding, and existing Render environment variables.
 
-## Master layout
+## Master totals rule
+Combined = Meta + Matrix for solar, load, grid import, and grid export.
 
-- Main Summary: Meta PV9000 on the left, Combined Site in the center, Matrix 6K on the right
-- Dedicated Meta PV9000 tab
-- Dedicated Combined Site tab
-- Dedicated Matrix 6K tab
-- Professional Charts page
-- Energy Totals page
-- Health & Alerts page
-- Raja Fraz portrait branding
-
-## Render variables
-
-`META_API_BASE=https://inverterzone-dashboard.onrender.com`
-
-`META_DASHBOARD_USER=admin`
-
-`META_DASHBOARD_PASSWORD=<same password used to open the Meta/InverterZone dashboard>`
-
-`MATRIX_API_BASE=https://fronus-matrix-dashboard.onrender.com`
-
-`ELECTRICITY_RATE_PKR=60`
-
-The Meta password stays only in Render. Do not commit it to GitHub.
-
-## V4 totals correction
-The Master Totals page now fetches `/api/energy` independently from both upstream dashboards for Today, Yesterday, This month, and Last month. It then displays Meta, Matrix, and Combined figures. This avoids using incomplete `today*` fields from a live telemetry response for authoritative energy totals.
+Deploy by replacing the existing repository contents and letting the Render Blueprint sync/redeploy.

@@ -38,3 +38,28 @@
 .energyLegend{display:flex;justify-content:center;gap:18px;margin-top:6px;color:#678497;font-size:11px;font-weight:700}.energyLegend span{display:flex;align-items:center;gap:6px}.energyLegend i{width:10px;height:10px;border-radius:3px;display:inline-block}.legendMeta{background:#357be8}.legendMatrix{background:#7657f2}.legendCombined{background:#062b46}
 .valuePanel dl{grid-template-columns:1fr auto}.valuePanel dd{font-weight:800;color:#062b46}
 @media(max-width:760px){.periodButtons{width:100%}.periodButtons button{flex:1;padding:9px 6px}.energyLegend{gap:10px;flex-wrap:wrap}}
+
+
+/* V5 MASTER HERO — make the combined site the visual centerpiece */
+@media(min-width:1101px){
+  .triad{grid-template-columns:.68fr 1.72fr .68fr;gap:12px}
+  .masterFocus{min-width:0}
+  .masterFocus .combinedHead{height:86px;padding:16px 22px}
+  .masterFocus .combinedHead h3{font-size:27px}
+  .masterFocus .powerBadge b{font-size:29px}
+  .masterFocus .combinedHeroGrid .megaMetric{padding:22px 24px}
+  .masterFocus .megaMetric b{font-size:44px}
+  .masterFocus .centerGauges .gaugeCard{height:275px;padding:16px 20px}
+  .masterFocus .centerGauges .gaugeCard h3{font-size:16px}
+  .masterFocus .centerGauges .gaugeCard svg{height:195px;width:98%;margin-top:4px}
+  .masterFocus .centerGauges .gTrack,.masterFocus .centerGauges .gValue{stroke-width:20}
+  .masterFocus .centerGauges .gaugeCard>b{top:142px;font-size:31px}
+  .masterFocus .centerGauges .gaugeCard>small{font-size:11px;margin-top:-10px}
+  .masterFocus .flowSummary div{padding:16px 12px}
+  .masterFocus .flowSummary b{font-size:16px}
+}
+@media(min-width:1500px){
+  .masterFocus .centerGauges .gaugeCard{height:300px}
+  .masterFocus .centerGauges .gaugeCard svg{height:215px}
+  .masterFocus .centerGauges .gaugeCard>b{top:155px;font-size:34px}
+}

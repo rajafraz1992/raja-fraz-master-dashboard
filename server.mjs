@@ -169,14 +169,17 @@ function combine(meta, matrix) {
 }
 
 function normalizeEnergy(payload, period = "T") {
-  const source = payload?.data && typeof payload.data === "object" ? payload.data : unwrap(payload);
+  // Both source dashboards wrap their energy payloads differently.
+  // Always unwrap recursively so Meta's { data: { dataDTO: {...} } }
+  // and Matrix's { data: {...} } shapes resolve to the actual totals object.
+  const source = unwrap(payload);
   return {
     period,
-    solarKwh: first(source, ["todaySolar"], 0),
-    loadKwh: first(source, ["todayLoad"], 0),
-    importKwh: first(source, ["todayGrid", "todayImport"], 0),
-    exportKwh: first(source, ["todayNetGrid", "todayExport"], 0),
-    rate: first(source, ["rate"], RATE)
+    solarKwh: first(source, ["todaySolar", "solarKwh", "solar"], 0),
+    loadKwh: first(source, ["todayLoad", "loadKwh", "consumptionKwh", "load"], 0),
+    importKwh: first(source, ["todayGrid", "todayImport", "importKwh", "gridImportKwh"], 0),
+    exportKwh: first(source, ["todayNetGrid", "todayExport", "exportKwh", "gridExportKwh"], 0),
+    rate: first(source, ["rate", "electricityRate"], RATE)
   };
 }
 
