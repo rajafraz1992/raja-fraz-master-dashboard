@@ -20,6 +20,8 @@ function gridMode(v) { const n=finite(v); return Math.abs(n)<30?'IDLE':n>=0?'IMP
 function ageText(ts) { const s=Math.max(0,Math.round((Date.now()-finite(ts,Date.now()))/1000)); if(s<5)return'Updated now'; if(s<60)return`Updated ${s}s ago`; return`Updated ${Math.floor(s/60)}m ago`; }
 function pct(v,max) { return Math.max(0,Math.min(100,Math.abs(finite(v))/Math.max(1,max)*100)); }
 function gauge(id,value,max,mode) { const el=$(id); if(!el)return; el.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`; el.classList.remove('red','green'); if(mode==='grid')el.classList.add(finite(value)>=0?'red':'green'); }
+function batteryFlowMode(value, modeText='') { const m=String(modeText||'').toLowerCase(); if(m.includes('dis')) return 'DISCHARGING'; if(m.includes('char')) return 'CHARGING'; const n=finite(value); if(Math.abs(n)<20) return 'IDLE'; return n>=0 ? 'CHARGING' : 'DISCHARGING'; }
+function batteryGauge(id,value,max,modeText='') { const el=$(id); if(!el)return; el.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`; el.classList.remove('red','green'); const mode=batteryFlowMode(value, modeText); el.classList.add(mode==='DISCHARGING'?'red':'green'); return mode; }
 function clock(){const d=new Date();set('clock',d.toLocaleTimeString('en-GB',{hour12:false}));set('date',d.toLocaleDateString('en-PK',{weekday:'short',day:'2-digit',month:'short'}));}
 setInterval(clock,1000); clock();
 
@@ -124,14 +126,15 @@ function renderMatrix(u){
 }
 function renderCombined(c,a,b,u){
   set('combinedSolarHero',fmtPower(c.solarW)); set('combinedDemandHero',fmtPower(c.siteDemandW)); set('combinedNet',fmtPower(c.gridW)); set('combinedMode',gridMode(c.gridW));
-  set('combinedSolarGaugeText',fmtPower(c.solarW)); set('combinedLoadGaugeText',fmtPower(c.siteDemandW)); set('combinedGridGaugeText',fmtPower(c.gridW)); set('combinedGridMode',gridMode(c.gridW)); set('combinedSmartGaugeText',fmtPower(c.smartLoadW));
-  gauge('combinedSolarGauge',c.solarW,11140); gauge('combinedLoadGauge',c.siteDemandW,16000); gauge('combinedGridGauge',c.gridW,16000,'grid'); gauge('combinedSmartGauge',c.smartLoadW,6000);
+  set('combinedSolarGaugeText',fmtPower(c.solarW)); set('combinedLoadGaugeText',fmtPower(c.siteDemandW)); set('combinedGridGaugeText',fmtPower(c.gridW)); set('combinedGridMode',gridMode(c.gridW));
+  const batteryMode=batteryGauge('combinedBatteryGauge',u?.batteryW,6000,u?.batteryMode);
+  set('combinedBatteryGaugeText',u?fmtPower(u.batteryW):'--'); set('combinedBatteryMode',u?batteryMode:'--'); set('combinedBatterySoc',u?`SOC ${fmtPct(u.batteryPct)}`:'SOC --');
+  gauge('combinedSolarGauge',c.solarW,11140); gauge('combinedLoadGauge',c.siteDemandW,16000); gauge('combinedGridGauge',c.gridW,16000,'grid');
   const total=finite(c.solarW);
   set('pv14000Share',total>0?`${Math.round(finite(a?.solarW)/total*100)}%`:'--%');
   set('pv9000Share',total>0?`${Math.round(finite(b?.solarW)/total*100)}%`:'--%');
   set('masterBattery',u?.batteryPct!=null?`${Math.round(u.batteryPct)}%`:'--');
   set('masterHealth',[a,b,u].filter(Boolean).length===3?'Excellent · 100/100':'Partial');
-  set('smartLoadSummary',fmtPower(c.smartLoadW));
 }
 function renderQuickTotals(c){
   set('todaySolar',fmtKwh(c.todaySolar)); set('todayLoad',fmtKwh(c.todayLoad)); set('todayImport',fmtKwh(c.todayImport)); set('todayExport',fmtKwh(c.todayExport));
