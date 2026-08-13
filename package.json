@@ -1,10 +1,10 @@
 {
   "name": "raja-fraz-master-solar-command-center",
-  "version": "3.0.0",
+  "version": "5.0.0",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs"
+    "check": "node --check server.mjs && node --check app/dashboard.js"
   },
   "dependencies": {
     "pg": "^8.16.3"

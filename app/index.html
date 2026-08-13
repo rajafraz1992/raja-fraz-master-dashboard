@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#082b43">
   <title>Raja Fraz Master Solar Command Center</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -10,9 +11,10 @@
   <nav class="topbar">
     <div class="navtabs">
       <button class="navtab active" data-view="dashboard">▦ Dashboard</button>
-      <button class="navtab" data-view="meta">☀ Meta PV9000</button>
+      <button class="navtab" data-view="pv14000">☀ PV14000</button>
+      <button class="navtab" data-view="pv9000">☀ PV9000</button>
+      <button class="navtab" data-view="matrix">▰ UPS Matrix</button>
       <button class="navtab" data-view="combined">⚡ Combined</button>
-      <button class="navtab" data-view="matrix">▰ Matrix 6K</button>
       <button class="navtab" data-view="charts">⌁ Charts</button>
       <button class="navtab" data-view="totals">↯ Totals</button>
       <button class="navtab" data-view="health">⚠ Health <b id="alertCount">0</b></button>
@@ -24,8 +26,8 @@
     <div class="brandPortrait"><img src="assets/raja-fraz-logo.jpeg" alt="Raja Fraz brand portrait"></div>
     <div class="siteTitles">
       <div class="eyebrow">MASTER SOLAR COMMAND CENTER</div>
-      <h1>Raja Fraz Solar Master Dashboard</h1>
-      <p>Fronus Meta PV9000 + Fronus Matrix 6K • individual systems and combined site intelligence</p>
+      <h1>Raja Fraz Solar Estate</h1>
+      <p>3 inverters • 2 solar inverters • 1 dedicated UPS • 11.14 kWp total PV</p>
     </div>
     <div class="headerStatus">
       <div class="statusChip" id="weather">☁ Gujrat</div>
@@ -37,77 +39,113 @@
   <main>
     <section id="dashboard" class="view active">
       <div class="sectionIntro">
-        <div><div class="eyebrow">LIVE SITE OVERVIEW</div><h2>Two systems. One command center.</h2></div>
-        <div class="freshness"><span>Dashboard poll <b>10s</b></span><span>Matrix cloud frame <b>~60s</b></span></div>
+        <div><div class="eyebrow">LIVE SITE OVERVIEW</div><h2>Three inverters. One command center.</h2><p>PV14000 + PV9000 generate solar. Matrix operates as the downstream UPS.</p></div>
+        <div class="freshness"><span>Dashboard poll <b>10s</b></span><span>Matrix cloud frame <b>~60s</b></span><span id="historyChip">History • checking</span></div>
       </div>
 
-      <div class="triad">
-        <article class="systemPanel metaPanel">
-          <div class="panelHead"><div><span class="systemDot metaDot"></span><strong>Fronus Meta PV9000</strong><small id="metaFresh">Waiting for data</small></div><b id="metaOnline" class="state">CHECKING</b></div>
-          <div class="heroMetric"><span>Solar PV</span><b id="metaSolarHero">--</b><small id="metaPvSplit">PV1 -- • PV2 --</small></div>
+      <div class="topologyGrid">
+        <article class="systemPanel pv14000Panel">
+          <div class="panelHead"><div><span class="systemDot pv14000Dot"></span><strong>FRONUS META 10KW - PV14000</strong><small id="pv14000Fresh">Waiting for data</small></div><b id="pv14000Online" class="state">CHECKING</b></div>
+          <div class="capacityLine"><span>PV installed <b>6.78 kWp</b></span><span>AC output <b>10 kW</b></span></div>
+          <div class="heroMetric"><span>Solar PV</span><b id="pv14000SolarHero">--</b><small id="pv14000PvSplit">PV1 -- • PV2 --</small></div>
           <div class="gaugeGrid compact">
-            <div class="gaugeCard"><h3>Load</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="metaLoadGauge" class="gValue blue" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="metaLoadGaugeText">--</b><small><span>0 W</span><span>6 kW</span></small></div>
-            <div class="gaugeCard"><h3>Solar</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="metaSolarGauge" class="gValue amber" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="metaSolarGaugeText">--</b><small><span>0 W</span><span>6.78 kWp</span></small></div>
-            <div class="gaugeCard wide"><h3>Grid Import / Export</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="metaGridGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="metaGridGaugeText">--</b><small><span id="metaGridMode">--</span><span id="metaGridV">-- V</span></small></div>
+            <div class="gaugeCard"><h3>Load</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="pv14000LoadGauge" class="gValue blue" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="pv14000LoadGaugeText">--</b><small><span>0 W</span><span>10 kW</span></small></div>
+            <div class="gaugeCard"><h3>Solar</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="pv14000SolarGauge" class="gValue amber" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="pv14000SolarGaugeText">--</b><small><span>0 W</span><span>6.78 kWp</span></small></div>
+            <div class="gaugeCard wide"><h3>Utility Grid</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="pv14000GridGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="pv14000GridGaugeText">--</b><small><span id="pv14000GridMode">--</span><span id="pv14000GridV">-- V</span></small></div>
           </div>
-          <div class="miniStrip"><div><span>Today solar</span><b id="metaTodaySolar">--</b></div><div><span>Temperature</span><b id="metaTemp">--</b></div><div><span>Health</span><b>100/100</b></div></div>
+          <div class="miniStrip"><div><span>Today solar</span><b id="pv14000TodaySolar">--</b></div><div><span>Temperature</span><b id="pv14000Temp">--</b></div><div><span>AC capacity</span><b>10 kW</b></div></div>
         </article>
 
-        <article class="combinedPanel">
-          <div class="combinedHead"><div><div class="eyebrow">COMBINED SITE</div><h3>Total Solar Estate</h3></div><div class="powerBadge"><span id="combinedMode">BALANCING</span><b id="combinedNet">--</b></div></div>
+        <article class="combinedPanel masterFocus">
+          <div class="combinedHead"><div><div class="eyebrow">MASTER SITE</div><h3>Total Solar Estate</h3></div><div class="powerBadge"><span id="combinedMode">BALANCING</span><b id="combinedNet">--</b><small>Utility grid only</small></div></div>
           <div class="combinedHeroGrid">
-            <div class="megaMetric solarMetric"><span>Total Solar</span><b id="combinedSolarHero">--</b><small>Meta + Matrix</small></div>
-            <div class="megaMetric loadMetric"><span>Site Demand</span><b id="combinedDemandHero">--</b><small>Normal loads + Smart Load</small></div>
+            <div class="megaMetric solarMetric"><span>Total Solar</span><b id="combinedSolarHero">--</b><small>PV14000 + PV9000</small></div>
+            <div class="megaMetric loadMetric"><span>Site Demand</span><b id="combinedDemandHero">--</b><small>Upstream loads • no UPS double-count</small></div>
           </div>
           <div class="gaugeGrid centerGauges">
-            <div class="gaugeCard"><h3>Total Solar</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedSolarGauge" class="gValue amber" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedSolarGaugeText">--</b><small><span>0 W</span><span>11.14 kWp</span></small></div>
-            <div class="gaugeCard"><h3>Total Demand</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedLoadGauge" class="gValue blue" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedLoadGaugeText">--</b><small><span>0 W</span><span>12 kW</span></small></div>
-            <div class="gaugeCard"><h3>Grid</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedGridGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedGridGaugeText">--</b><small><span id="combinedGridMode">--</span><span>12 kW scale</span></small></div>
-            <div class="gaugeCard"><h3>Smart Load</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedSmartGauge" class="gValue orange" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedSmartGaugeText">--</b><small><span>AC / Motor</span><span>6 kW</span></small></div>
+            <div class="gaugeCard masterGauge"><h3>Total Solar</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedSolarGauge" class="gValue amber" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedSolarGaugeText">--</b><small><span>0 W</span><span>11.14 kWp</span></small></div>
+            <div class="gaugeCard masterGauge"><h3>Total Demand</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedLoadGauge" class="gValue blue" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedLoadGaugeText">--</b><small><span>0 W</span><span>16 kW upstream</span></small></div>
+            <div class="gaugeCard masterGauge"><h3>Utility Grid</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedGridGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedGridGaugeText">--</b><small><span id="combinedGridMode">--</span><span>PV14000 + PV9000 only</span></small></div>
+            <div class="gaugeCard masterGauge"><h3>Smart Load</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedSmartGauge" class="gValue orange" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedSmartGaugeText">--</b><small><span>Direct from PV9000</span><span>6 kW scale</span></small></div>
           </div>
-          <div class="flowSummary"><div><span>META SHARE</span><b id="metaShare">--%</b></div><div><span>MATRIX SHARE</span><b id="matrixShare">--%</b></div><div><span>BATTERY</span><b id="masterBattery">--</b></div><div><span>SYSTEM HEALTH</span><b id="masterHealth">--</b></div></div>
+          <div class="flowSummary"><div><span>PV14000 SHARE</span><b id="pv14000Share">--%</b></div><div><span>PV9000 SHARE</span><b id="pv9000Share">--%</b></div><div><span>UPS BATTERY</span><b id="masterBattery">--</b></div><div><span>SYSTEM HEALTH</span><b id="masterHealth">--</b></div></div>
         </article>
 
-        <article class="systemPanel matrixPanel">
-          <div class="panelHead"><div><span class="systemDot matrixDot"></span><strong>Fronus Matrix 6K</strong><small id="matrixFresh">Waiting for data</small></div><b id="matrixOnline" class="state">CHECKING</b></div>
-          <div class="heroMetric"><span>Solar PV</span><b id="matrixSolarHero">--</b><small id="matrixPvSplit">PV1 -- • PV2 --</small></div>
+        <article class="systemPanel pv9000Panel">
+          <div class="panelHead"><div><span class="systemDot pv9000Dot"></span><strong>FRONUS META 6KW - PV9000</strong><small id="pv9000Fresh">Waiting for data</small></div><b id="pv9000Online" class="state">CHECKING</b></div>
+          <div class="capacityLine"><span>PV installed <b>4.36 kWp</b></span><span>AC output <b>6 kW</b></span></div>
+          <div class="heroMetric"><span>Solar PV</span><b id="pv9000SolarHero">--</b><small id="pv9000PvSplit">PV1 -- • PV2 --</small></div>
           <div class="gaugeGrid compact">
-            <div class="gaugeCard"><h3>Load</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="matrixLoadGauge" class="gValue blue" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="matrixLoadGaugeText">--</b><small><span>0 W</span><span>6 kW</span></small></div>
-            <div class="gaugeCard"><h3>Solar</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="matrixSolarGauge" class="gValue amber" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="matrixSolarGaugeText">--</b><small><span>0 W</span><span>4.36 kWp</span></small></div>
-            <div class="gaugeCard"><h3>Grid</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="matrixGridGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="matrixGridGaugeText">--</b><small><span id="matrixGridMode">--</span><span id="matrixGridV">-- V</span></small></div>
-            <div class="gaugeCard"><h3>Smart Load</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="matrixSmartGauge" class="gValue orange" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="matrixSmartGaugeText">--</b><small><span>AC / Motor</span><span>6 kW</span></small></div>
+            <div class="gaugeCard"><h3>Load / AC Output</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="pv9000LoadGauge" class="gValue blue" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="pv9000LoadGaugeText">--</b><small><span>0 W</span><span>6 kW</span></small></div>
+            <div class="gaugeCard"><h3>Solar</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="pv9000SolarGauge" class="gValue amber" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="pv9000SolarGaugeText">--</b><small><span>0 W</span><span>4.36 kWp</span></small></div>
+            <div class="gaugeCard"><h3>Utility Grid</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="pv9000GridGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="pv9000GridGaugeText">--</b><small><span id="pv9000GridMode">--</span><span id="pv9000GridV">-- V</span></small></div>
+            <div class="gaugeCard"><h3>Smart Load</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="pv9000SmartGauge" class="gValue orange" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="pv9000SmartGaugeText">--</b><small><span>Direct output</span><span>6 kW</span></small></div>
           </div>
-          <div class="miniStrip"><div><span>Battery</span><b id="matrixBattery">--</b></div><div><span>Transformer</span><b id="matrixTemp">--</b></div><div><span>Today solar</span><b id="matrixTodaySolar">--</b></div></div>
+          <div class="miniStrip"><div><span>Today solar</span><b id="pv9000TodaySolar">--</b></div><div><span>Temperature</span><b id="pv9000Temp">--</b></div><div><span>Feeds</span><b>UPS + Smart</b></div></div>
         </article>
       </div>
 
+      <article class="upsPanel">
+        <div class="upsHeader">
+          <div><div class="eyebrow">SYSTEM 03 • DOWNSTREAM UPS</div><h3>FRONUS MATRIX 6KW <span>USED AS UPS</span></h3><p>PV disabled • AC input supplied from PV9000 • utility-grid totals exclude this internal transfer.</p></div>
+          <div><small id="matrixFresh">Waiting for data</small><b id="matrixOnline" class="state">CHECKING</b></div>
+        </div>
+        <div class="upsBody">
+          <div class="upsGauge"><h3>AC Input from PV9000</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="matrixInputGauge" class="gValue teal" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="matrixInputGaugeText">--</b><small><span id="matrixInputV">-- V</span><span>Internal feed</span></small></div>
+          <div class="flowArrow">PV9000 <span>→</span> MATRIX UPS <span>→</span> BACKUP LOAD</div>
+          <div class="upsGauge"><h3>UPS Output Load</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="matrixLoadGauge" class="gValue blue" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="matrixLoadGaugeText">--</b><small><span>0 W</span><span>6 kW</span></small></div>
+          <div class="upsStats">
+            <div><span>Battery SOC</span><b id="matrixBattery">--</b></div>
+            <div><span>Battery power</span><b id="matrixBatteryPower">--</b></div>
+            <div><span>Transformer</span><b id="matrixTemp">--</b></div>
+            <div><span>PV installed</span><b>0 W</b></div>
+          </div>
+        </div>
+      </article>
+
       <div class="dashboardCharts">
-        <article class="chartPanel mainChart"><div class="chartHead"><div><span>POWER OVERVIEW</span><h3>Combined Solar • Demand • Grid</h3></div><div class="legend"><i class="lg amberBg"></i>Solar <i class="lg blueBg"></i>Demand <i class="lg greenBg"></i>Grid export / import</div></div><canvas id="overviewChart"></canvas></article>
-        <article class="chartPanel"><div class="chartHead"><div><span>SYSTEM SPLIT</span><h3>Meta vs Matrix Solar</h3></div></div><canvas id="systemSplitChart"></canvas></article>
+        <article class="chartPanel mainChart"><div class="chartHead"><div><span>MASTER POWER</span><h3>Solar • Site Demand • Utility Grid</h3></div><div class="legend"><i class="lg amberBg"></i>Solar <i class="lg blueBg"></i>Demand <i class="lg gridBg"></i>Grid (+ import / − export)</div></div><canvas id="overviewChart"></canvas></article>
+        <article class="chartPanel"><div class="chartHead"><div><span>SOLAR SPLIT</span><h3>PV14000 vs PV9000</h3></div></div><canvas id="systemSplitChart"></canvas></article>
       </div>
 
       <div class="summaryCards">
-        <div class="summaryCard"><span>TODAY SOLAR</span><b id="todaySolar">--</b><small>Combined production</small></div>
-        <div class="summaryCard"><span>TODAY LOAD</span><b id="todayLoad">--</b><small>Site consumption</small></div>
-        <div class="summaryCard importCard"><span>GRID IMPORT</span><b id="todayImport">--</b><small>Today</small></div>
-        <div class="summaryCard exportCard"><span>GRID EXPORT</span><b id="todayExport">--</b><small>Today</small></div>
-        <div class="summaryCard"><span>SOLAR VALUE</span><b id="solarValue">--</b><small>Estimated at configured rate</small></div>
-        <div class="summaryCard"><span>CONNECTED SYSTEMS</span><b id="systemsOnline">--</b><small>Meta + Matrix</small></div>
+        <div class="summaryCard"><span>TODAY SOLAR</span><b id="todaySolar">--</b><small>PV14000 + PV9000</small></div>
+        <div class="summaryCard"><span>SITE LOAD</span><b id="todayLoad">--</b><small>No UPS double-count</small></div>
+        <div class="summaryCard importCard"><span>GRID IMPORT</span><b id="todayImport">--</b><small>Utility grid only</small></div>
+        <div class="summaryCard exportCard"><span>GRID EXPORT</span><b id="todayExport">--</b><small>Utility grid only</small></div>
+        <div class="summaryCard"><span>SMART LOAD</span><b id="smartLoadSummary">--</b><small>Direct from PV9000</small></div>
+        <div class="summaryCard"><span>CONNECTED SYSTEMS</span><b id="systemsOnline">--</b><small>PV14000 + PV9000 + UPS</small></div>
       </div>
       <div id="masterNotice" class="notice" hidden></div>
     </section>
 
-    <section id="meta" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SYSTEM 01</div><h2>Fronus Meta PV9000</h2><p>Dedicated InverterZone telemetry view.</p></div><span class="statusPill" id="metaPageStatus">CHECKING</span></div><div id="metaPage" class="systemDetailGrid"></div><div class="detailCharts"><article class="chartPanel"><div class="chartHead"><div><span>META POWER</span><h3>Solar • Load • Grid</h3></div></div><canvas id="metaChart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>PV STRINGS</span><h3>PV1 vs PV2</h3></div></div><canvas id="metaPvChart"></canvas></article></div></div></section>
+    <section id="pv14000" class="view">
+      <div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SYSTEM 01 • PRIMARY SOLAR</div><h2>FRONUS META 10KW - PV14000</h2><p>10 kW AC output • 6.78 kWp installed PV.</p></div><span class="statusPill" id="pv14000PageStatus">CHECKING</span></div><div id="pv14000Page" class="systemDetailGrid"></div><div class="detailCharts"><article class="chartPanel"><div class="chartHead"><div><span>PV14000 POWER</span><h3>Solar • Load • Utility Grid</h3></div></div><canvas id="pv14000Chart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>PV STRINGS</span><h3>PV1 vs PV2</h3></div></div><canvas id="pv14000PvChart"></canvas></article></div></div>
+    </section>
 
-    <section id="combined" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">MASTER SITE</div><h2>Combined Energy Center</h2><p>Aggregated production, demand, grid exchange and energy balance.</p></div><span class="statusPill" id="combinedPageStatus">CHECKING</span></div><div id="combinedPage" class="systemDetailGrid"></div><article class="chartPanel fullChartPanel"><div class="chartHead"><div><span>COMBINED POWER</span><h3>Total Solar • Site Demand • Grid • Smart Load</h3></div></div><canvas id="combinedChart"></canvas></article></div></section>
+    <section id="pv9000" class="view">
+      <div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SYSTEM 02 • SOLAR + DISTRIBUTION</div><h2>FRONUS META 6KW - PV9000</h2><p>6 kW AC output • 4.36 kWp PV • feeds Matrix UPS AC input and Smart Load.</p></div><span class="statusPill" id="pv9000PageStatus">CHECKING</span></div><div id="pv9000Page" class="systemDetailGrid"></div><div class="detailCharts"><article class="chartPanel"><div class="chartHead"><div><span>PV9000 POWER</span><h3>Solar • Load • Grid • Smart Load</h3></div></div><canvas id="pv9000Chart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>PV STRINGS</span><h3>PV1 vs PV2</h3></div></div><canvas id="pv9000PvChart"></canvas></article></div></div>
+    </section>
 
-    <section id="matrix" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SYSTEM 02</div><h2>Fronus Matrix 6K</h2><p>SOLARMAN Business telemetry with battery and Smart Load.</p></div><span class="statusPill" id="matrixPageStatus">CHECKING</span></div><div id="matrixPage" class="systemDetailGrid"></div><div class="detailCharts"><article class="chartPanel"><div class="chartHead"><div><span>MATRIX POWER</span><h3>Solar • Load • Grid • Smart Load</h3></div></div><canvas id="matrixChart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>PV STRINGS</span><h3>PV1 vs PV2</h3></div></div><canvas id="matrixPvChart"></canvas></article></div></div></section>
+    <section id="matrix" class="view">
+      <div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SYSTEM 03 • UPS / BACKUP</div><h2>FRONUS MATRIX 6KW</h2><p>PV-less UPS • AC input from PV9000 • battery-backed output for backup loads.</p></div><span class="statusPill" id="matrixPageStatus">CHECKING</span></div><div id="matrixPage" class="systemDetailGrid"></div><div class="detailCharts"><article class="chartPanel"><div class="chartHead"><div><span>UPS POWER</span><h3>AC Input • UPS Load • Battery</h3></div></div><canvas id="matrixChart"></canvas></article><article class="topologyCard"><div class="eyebrow">POWER PATH</div><h3>PV9000 → Matrix UPS → Backup Load</h3><p>The Matrix grid/AC-input reading is an internal site transfer. It is intentionally excluded from Master utility-grid totals.</p><div class="topologyBadges"><span>PV: 0 W</span><span>AC: 6 kW</span><span>Role: UPS</span></div></article></div></div>
+    </section>
 
-    <section id="charts" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">HISTORICAL TELEMETRY</div><h2>Professional Performance Charts</h2><p>Individual and combined site trends.</p></div><div class="rangeButtons"><button data-hours="1">1H</button><button data-hours="6">6H</button><button class="active" data-hours="24">24H</button><button data-hours="168">7D</button></div></div><article class="chartPanel fullChartPanel tall"><div class="chartHead"><div><span>MASTER POWER</span><h3>Solar • Site Demand • Grid • Smart Load</h3></div></div><canvas id="fullChart"></canvas></article><div class="detailCharts"><article class="chartPanel"><div class="chartHead"><div><span>META</span><h3>PV9000 power history</h3></div></div><canvas id="fullMetaChart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>MATRIX</span><h3>Matrix 6K power history</h3></div></div><canvas id="fullMatrixChart"></canvas></article></div></div></section>
+    <section id="combined" class="view">
+      <div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">MASTER SITE</div><h2>Combined Energy Center</h2><p>Solar and utility-grid totals come from PV14000 + PV9000. Matrix is downstream and excluded from double-counted totals.</p></div><span class="statusPill" id="combinedPageStatus">CHECKING</span></div><div id="combinedPage" class="systemDetailGrid"></div><article class="chartPanel fullChartPanel"><div class="chartHead"><div><span>COMBINED POWER</span><h3>Total Solar • Site Demand • Utility Grid • Smart Load</h3></div></div><canvas id="combinedChart"></canvas></article></div>
+    </section>
 
-    <section id="totals" class="view"><div class="pageShell"><div class="pageTitle totalsTitle"><div><div class="eyebrow">SERVER ENERGY TOTALS</div><h2>Energy Performance</h2><p>Authoritative totals fetched independently from Meta and Matrix, then combined.</p></div><div class="periodButtons" id="energyPeriod"><button class="active" data-period="T">Today</button><button data-period="Y">Yesterday</button><button data-period="TM">This month</button><button data-period="LM">Last month</button></div></div><div id="energyNotice" class="energyNotice" hidden></div><div class="totalsGrid"><div class="totalCard solarTotal"><span>SOLAR PRODUCTION</span><b id="totSolar">--</b><small id="totPeriodSolar">Combined today</small></div><div class="totalCard loadTotal"><span>LOAD CONSUMED</span><b id="totLoad">--</b><small id="totPeriodLoad">Combined today</small></div><div class="totalCard importTotal"><span>GRID IMPORT</span><b id="totImport">--</b><small id="totPeriodImport">Combined today</small></div><div class="totalCard exportTotal"><span>GRID EXPORT</span><b id="totExport">--</b><small id="totPeriodExport">Combined today</small></div></div><div class="totalsBody"><article class="chartPanel totalChart"><div class="chartHead"><div><span>ENERGY BALANCE</span><h3 id="energyPeriodLabel">Today · Meta + Matrix + Combined</h3></div></div><canvas id="barChart"></canvas><div class="energyLegend"><span><i class="legendMeta"></i>Meta</span><span><i class="legendMatrix"></i>Matrix</span><span><i class="legendCombined"></i>Combined</span></div></article><aside class="valuePanel"><span>ESTIMATED SOLAR VALUE</span><div><small>PKR</small><b id="solarValueBig">--</b></div><p>Combined solar × configured electricity rate.</p><hr><dl><dt>Rate</dt><dd id="rateValue">--</dd><dt>Meta solar</dt><dd id="totMetaSolar">--</dd><dt>Matrix solar</dt><dd id="totMatrixSolar">--</dd><dt>Combined solar</dt><dd id="totCombinedSolar">--</dd><dt>Meta load</dt><dd id="totMetaLoad">--</dd><dt>Matrix load</dt><dd id="totMatrixLoad">--</dd><dt>Combined import</dt><dd id="totCombinedImport">--</dd><dt>Combined export</dt><dd id="totCombinedExport">--</dd></dl></aside></div></div></section>
+    <section id="charts" class="view">
+      <div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">ONLINE HISTORICAL TELEMETRY</div><h2>Professional Performance Charts</h2><p>PostgreSQL-backed history for both solar inverters, the UPS and the combined estate.</p></div><div class="rangeButtons"><button data-hours="1">1H</button><button data-hours="6">6H</button><button class="active" data-hours="24">24H</button><button data-hours="168">7D</button><button data-hours="720">30D</button></div></div><article class="chartPanel fullChartPanel tall"><div class="chartHead"><div><span>MASTER POWER</span><h3>Solar • Site Demand • Utility Grid • Smart Load</h3></div></div><canvas id="fullChart"></canvas></article><div class="threeCharts"><article class="chartPanel"><div class="chartHead"><div><span>SYSTEM 01</span><h3>PV14000 history</h3></div></div><canvas id="fullPv14000Chart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>SYSTEM 02</span><h3>PV9000 history</h3></div></div><canvas id="fullPv9000Chart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>SYSTEM 03</span><h3>Matrix UPS history</h3></div></div><canvas id="fullMatrixChart"></canvas></article></div></div>
+    </section>
 
-    <section id="health" class="view"><div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SYSTEM SUPERVISION</div><h2>Health & Connectivity</h2><p>Connection status, API diagnostics and operating summary.</p></div><span class="statusPill good" id="healthPill">CHECKING</span></div><div class="healthGrid"><article class="healthCard"><h3>Meta PV9000</h3><div id="metaHealth"></div></article><article class="healthCard masterHealthCard"><h3>Master Site</h3><div id="combinedHealth"></div></article><article class="healthCard"><h3>Matrix 6K</h3><div id="matrixHealth"></div></article></div><div class="notice healthNotice" id="diagnosticNotice">Waiting for diagnostics…</div></div></section>
+    <section id="totals" class="view">
+      <div class="pageShell"><div class="pageTitle totalsTitle"><div><div class="eyebrow">SERVER ENERGY TOTALS</div><h2>Energy Performance</h2><p>Authoritative site totals: PV14000 + PV9000. Matrix UPS is shown separately and excluded from solar/grid totals.</p></div><div class="periodButtons" id="energyPeriod"><button class="active" data-period="T">Today</button><button data-period="Y">Yesterday</button><button data-period="TM">This month</button><button data-period="LM">Last month</button></div></div><div id="energyNotice" class="energyNotice" hidden></div><div class="totalsGrid"><div class="totalCard solarTotal"><span>SOLAR PRODUCTION</span><b id="totSolar">--</b><small id="totPeriodSolar">Combined today</small></div><div class="totalCard loadTotal"><span>SITE LOAD</span><b id="totLoad">--</b><small id="totPeriodLoad">Topology corrected</small></div><div class="totalCard importTotal"><span>GRID IMPORT</span><b id="totImport">--</b><small id="totPeriodImport">Utility grid only</small></div><div class="totalCard exportTotal"><span>GRID EXPORT</span><b id="totExport">--</b><small id="totPeriodExport">Utility grid only</small></div></div><div class="totalsBody"><article class="chartPanel totalChart"><div class="chartHead"><div><span>ENERGY BALANCE</span><h3 id="energyPeriodLabel">Today · PV14000 + PV9000 + Combined</h3></div></div><canvas id="barChart"></canvas><div class="energyLegend"><span><i class="legendPv14000"></i>PV14000</span><span><i class="legendPv9000"></i>PV9000</span><span><i class="legendCombined"></i>Combined</span></div></article><aside class="valuePanel"><span>ESTIMATED SOLAR VALUE</span><div><small>PKR</small><b id="solarValueBig">--</b></div><p>Combined solar × configured electricity rate.</p><hr><dl><dt>Rate</dt><dd id="rateValue">--</dd><dt>PV14000 solar</dt><dd id="totPv14000Solar">--</dd><dt>PV9000 solar</dt><dd id="totPv9000Solar">--</dd><dt>Combined solar</dt><dd id="totCombinedSolar">--</dd><dt>PV14000 load</dt><dd id="totPv14000Load">--</dd><dt>PV9000 load</dt><dd id="totPv9000Load">--</dd><dt>UPS downstream load</dt><dd id="totMatrixLoad">--</dd><dt>Combined import</dt><dd id="totCombinedImport">--</dd><dt>Combined export</dt><dd id="totCombinedExport">--</dd></dl><div class="topologyNote">UPS downstream load is informational and excluded from the site total when already contained in PV9000 output.</div></aside></div></div>
+    </section>
+
+    <section id="health" class="view">
+      <div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">SYSTEM SUPERVISION</div><h2>Health, Topology & Connectivity</h2><p>Three upstream connections plus topology safeguards that prevent double-counting.</p></div><span class="statusPill good" id="healthPill">CHECKING</span></div><div class="healthGrid four"><article class="healthCard"><h3>PV14000</h3><div id="pv14000Health"></div></article><article class="healthCard"><h3>PV9000</h3><div id="pv9000Health"></div></article><article class="healthCard"><h3>Matrix UPS</h3><div id="matrixHealth"></div></article><article class="healthCard masterHealthCard"><h3>Master Site</h3><div id="combinedHealth"></div></article></div><article class="topologyCard healthTopology"><div class="eyebrow">ACTIVE TOPOLOGY RULES</div><h3>PV14000 + PV9000 → Utility Grid / Site Loads • PV9000 → Matrix UPS + Smart Load</h3><div class="topologyRules"><span>✓ Matrix PV contribution = 0 W</span><span>✓ Matrix AC input is internal, not utility grid</span><span>✓ Matrix downstream load is not double-counted</span><span>✓ Smart Load belongs to PV9000</span></div></article><div class="notice healthNotice" id="diagnosticNotice">Waiting for diagnostics…</div></div>
+    </section>
   </main>
 
   <script src="dashboard.js"></script>

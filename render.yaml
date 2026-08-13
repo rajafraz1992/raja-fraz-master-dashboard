@@ -12,14 +12,22 @@ services:
     buildCommand: npm install
     startCommand: npm start
     envVars:
-      - key: META_API_BASE
+      - key: PV14000_API_BASE
         value: https://inverterzone-dashboard.onrender.com
       - key: META_DASHBOARD_USER
         value: admin
       - key: META_DASHBOARD_PASSWORD
         sync: false
+      - key: PV9000_API_BASE
+        sync: false
+      - key: PV9000_DASHBOARD_USER
+        value: admin
       - key: MATRIX_API_BASE
         value: https://fronus-matrix-dashboard.onrender.com
+      - key: PV9000_LOAD_INCLUDES_UPS
+        value: "true"
+      - key: PV9000_LOAD_INCLUDES_SMART
+        value: "false"
       - key: ELECTRICITY_RATE_PKR
         value: 60
       - key: HISTORY_SAMPLE_SECONDS
