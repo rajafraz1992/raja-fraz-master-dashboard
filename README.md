@@ -81,3 +81,9 @@ History includes PV14000, PV9000, Matrix UPS and topology-corrected combined sam
 - **Charts:** 1H / 6H / 24H / 7D / 30D online history
 - **Totals:** Today / Yesterday / This month / Last month
 - **Health:** 3-source API status and active topology rules
+
+
+## V11 UI adjustment
+- Master center column slightly narrower; PV14000 and PV9000 side panels slightly wider.
+- Master Battery gauge shows battery voltage instead of SOC in the lower-right reading.
+- Battery gauge remains green while charging and red while discharging.

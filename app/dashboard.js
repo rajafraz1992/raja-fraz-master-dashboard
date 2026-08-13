@@ -128,7 +128,7 @@ function renderCombined(c,a,b,u){
   set('combinedSolarHero',fmtPower(c.solarW)); set('combinedDemandHero',fmtPower(c.siteDemandW)); set('combinedNet',fmtPower(c.gridW)); set('combinedMode',gridMode(c.gridW));
   set('combinedSolarGaugeText',fmtPower(c.solarW)); set('combinedLoadGaugeText',fmtPower(c.siteDemandW)); set('combinedGridGaugeText',fmtPower(c.gridW)); set('combinedGridMode',gridMode(c.gridW));
   const batteryMode=batteryGauge('combinedBatteryGauge',u?.batteryW,6000,u?.batteryMode);
-  set('combinedBatteryGaugeText',u?fmtPower(u.batteryW):'--'); set('combinedBatteryMode',u?batteryMode:'--'); set('combinedBatterySoc',u?`SOC ${fmtPct(u.batteryPct)}`:'SOC --');
+  set('combinedBatteryGaugeText',u?fmtPower(u.batteryW):'--'); set('combinedBatteryMode',u?batteryMode:'--'); set('combinedBatteryVoltage',u?`${finite(u.batteryV).toFixed(1)} V`:'-- V');
   gauge('combinedSolarGauge',c.solarW,11140); gauge('combinedLoadGauge',c.siteDemandW,16000); gauge('combinedGridGauge',c.gridW,16000,'grid');
   const total=finite(c.solarW);
   set('pv14000Share',total>0?`${Math.round(finite(a?.solarW)/total*100)}%`:'--%');
