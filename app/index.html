@@ -91,14 +91,41 @@
           <div class="tuyaHeaderStatus"><small id="tuyaFresh">Waiting for meter</small><b id="tuyaOnline" class="state">CHECKING</b><span id="tuyaMode" class="tuyaDirection idle">IDLE</span></div>
         </div>
         <div class="tuyaBody">
-          <div class="tuyaGauge importGauge"><h3>Grid Import</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="tuyaImportGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="tuyaImportGaugeText">--</b><small><span>FROM GRID</span><span id="tuyaImportTotal">-- kWh total</span></small></div>
-          <div class="tuyaGauge exportGauge"><h3>Grid Export</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="tuyaExportGauge" class="gValue green" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="tuyaExportGaugeText">--</b><small><span>TO GRID</span><span id="tuyaExportTotal">-- kWh total</span></small></div>
+          <div class="tuyaGauge importGauge"><h3>Grid Import <small>• 5 kW MDI</small></h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="tuyaImportGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="tuyaImportGaugeText">--</b><small><span>FROM GRID</span><span id="tuyaImportTotal">-- kWh total</span></small></div>
+          <div class="tuyaGauge exportGauge"><h3>Grid Export <small>• 6 kW DG</small></h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="tuyaExportGauge" class="gValue green" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="tuyaExportGaugeText">--</b><small><span>TO GRID</span><span id="tuyaExportTotal">-- kWh total</span></small></div>
           <div class="tuyaStats">
             <div><span>Grid Voltage</span><b id="tuyaVoltage">-- V</b></div>
             <div><span>Current</span><b id="tuyaCurrent">-- A</b></div>
             <div><span>Power Factor</span><b id="tuyaPf">--</b></div>
             <div><span>Meter Temp</span><b id="tuyaTemp">-- °C</b></div>
           </div>
+        </div>
+        <div class="tuyaEnergyTotals">
+          <div class="tuyaTotalsHead">
+            <div><span>TRUE TUYA ENERGY</span><h4>Daily & Monthly Import / Export</h4><small>Calculated from Tuya cumulative meter report logs • Asia/Karachi</small></div>
+            <div class="tuyaSelector">
+              <div class="tuyaModeButtons" id="tuyaRangeMode">
+                <button class="active" data-tuya-range="day">Day</button>
+                <button data-tuya-range="month">Month</button>
+              </div>
+              <input id="tuyaDayPicker" type="date" aria-label="Select Tuya day">
+              <input id="tuyaMonthPicker" type="month" aria-label="Select Tuya month" hidden>
+              <button id="tuyaLoadPeriod" class="tuyaLoadButton" type="button">Load</button>
+            </div>
+          </div>
+          <div class="tuyaQuickTotals">
+            <div class="tuyaEnergyCard importEnergy"><span>Today Import</span><b id="tuyaTodayImport">-- kWh</b><small id="tuyaTodayLabel">Today</small></div>
+            <div class="tuyaEnergyCard exportEnergy"><span>Today Export</span><b id="tuyaTodayExport">-- kWh</b><small>Physical meter</small></div>
+            <div class="tuyaEnergyCard importEnergy"><span>This Month Import</span><b id="tuyaMonthImport">-- kWh</b><small id="tuyaMonthLabel">This month</small></div>
+            <div class="tuyaEnergyCard exportEnergy"><span>This Month Export</span><b id="tuyaMonthExport">-- kWh</b><small>Physical meter</small></div>
+          </div>
+          <div class="tuyaSelectedPeriod">
+            <div class="selectedPeriodTitle"><span>SELECTED PERIOD</span><b id="tuyaSelectedLabel">--</b><small id="tuyaSelectedStatus">Choose a day or month</small></div>
+            <div class="selectedPeriodMetric importEnergy"><span>Import</span><b id="tuyaSelectedImport">-- kWh</b></div>
+            <div class="selectedPeriodMetric exportEnergy"><span>Export</span><b id="tuyaSelectedExport">-- kWh</b></div>
+            <div class="selectedPeriodMetric netEnergy"><span>Net</span><b id="tuyaSelectedNet">-- kWh</b><small>Import − Export</small></div>
+          </div>
+          <div id="tuyaEnergyNotice" class="tuyaEnergyNotice" hidden></div>
         </div>
       </article>
 

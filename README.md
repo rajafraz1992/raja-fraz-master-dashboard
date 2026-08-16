@@ -112,3 +112,15 @@ History includes PV14000, PV9000, Matrix UPS and topology-corrected combined sam
 - Separate real-time Import and Export gauges.
 - Inverter utility-grid calculations remain unchanged for comparison.
 - Existing V13 compact center layout and V12 battery power/mode/voltage gauge behavior are preserved.
+
+
+## V15 Tuya true energy history
+
+The Master Tuya panel now shows real physical meter energy for Today and This Month, plus a Day/Month selector. The Master proxies these requests to the Tuya dashboard so Tuya credentials remain only in the Tuya Render service.
+
+This requires the companion **Tuya Grid Dashboard V9 History API** to be deployed first. The existing `TUYA_API_BASE` remains unchanged.
+
+## V16 Tuya MDI gauge ranges
+- Tuya Grid Import gauge maximum: **5 kW** (approved WAPDA load / MDI).
+- Tuya Grid Export gauge maximum: **6 kW** (approved DG capacity / MDI).
+- Live readings, daily/monthly history, and all other V15 functions are unchanged.

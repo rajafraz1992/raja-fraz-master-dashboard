@@ -9,6 +9,8 @@ let history = { pv14000: [], pv9000: [], matrix: [], combined: [], storage: 'loa
 let activeHours = 24;
 let activeEnergyPeriod = 'T';
 let energy = null;
+let tuyaRangeMode = 'day';
+let tuyaQuickLoaded = false;
 
 function set(id, value) { const el = $(id); if (el) el.textContent = value; }
 function finite(v, f=0) { const n = Number(v); return Number.isFinite(n) ? n : f; }
@@ -24,6 +26,13 @@ function fixedGauge(id,value,max,colorClass) { const el=$(id); if(!el)return; el
 function batteryFlowMode(value, modeText='') { const m=String(modeText||'').toLowerCase(); if(m.includes('dis')) return 'DISCHARGING'; if(m.includes('char')) return 'CHARGING'; const n=finite(value); if(Math.abs(n)<20) return 'IDLE'; return n>=0 ? 'CHARGING' : 'DISCHARGING'; }
 function batteryGauge(id,value,max,modeText='') { const el=$(id); if(!el)return; el.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`; el.classList.remove('red','green'); const mode=batteryFlowMode(value, modeText); el.classList.add(mode==='DISCHARGING'?'red':'green'); return mode; }
 function clock(){const d=new Date();set('clock',d.toLocaleTimeString('en-GB',{hour12:false}));set('date',d.toLocaleDateString('en-PK',{weekday:'short',day:'2-digit',month:'short'}));}
+function pkParts(){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Karachi',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const o={};parts.forEach(p=>{if(p.type!=='literal')o[p.type]=p.value});return o;
+}
+function pkToday(){const p=pkParts();return `${p.year}-${p.month}-${p.day}`;}
+function pkMonth(){const p=pkParts();return `${p.year}-${p.month}`;}
+function nullableKwh(v){return v==null||!Number.isFinite(Number(v))?'-- kWh':`${Number(v).toFixed(2)} kWh`;}
 setInterval(clock,1000); clock();
 
 $$('.navtab').forEach((button)=>button.addEventListener('click',()=>{
@@ -42,6 +51,17 @@ $$('#energyPeriod button').forEach((button)=>button.addEventListener('click',()=
   activeEnergyPeriod=button.dataset.period||'T';
   loadEnergy(activeEnergyPeriod);
 }));
+
+$$('#tuyaRangeMode button').forEach((button)=>button.addEventListener('click',()=>{
+  tuyaRangeMode=button.dataset.tuyaRange||'day';
+  $$('#tuyaRangeMode button').forEach(b=>b.classList.toggle('active',b===button));
+  const day=$('tuyaDayPicker'),month=$('tuyaMonthPicker');
+  if(day)day.hidden=tuyaRangeMode!=='day'; if(month)month.hidden=tuyaRangeMode!=='month';
+  loadSelectedTuyaEnergy();
+}));
+$('tuyaLoadPeriod')?.addEventListener('click',loadSelectedTuyaEnergy);
+$('tuyaDayPicker')?.addEventListener('change',loadSelectedTuyaEnergy);
+$('tuyaMonthPicker')?.addEventListener('change',loadSelectedTuyaEnergy);
 
 async function loadLive(){
   try{
@@ -68,6 +88,41 @@ async function loadEnergy(period='T'){
     energy=await response.json();
     renderEnergy();
   }catch(error){const n=$('energyNotice');if(n){n.hidden=false;n.textContent=`Totals unavailable: ${error.message}`;}}
+}
+
+async function fetchTuyaRange(type,value){
+  const key=type==='day'?'date':'month';
+  const response=await fetch(`/api/master/tuya-energy?type=${encodeURIComponent(type)}&${key}=${encodeURIComponent(value)}`,{cache:'no-store'});
+  const data=await response.json();
+  if(!response.ok||data.success===false)throw new Error(data.error||data.msg||'Tuya history unavailable');
+  return data;
+}
+function setTuyaEnergyNotice(message=''){
+  const n=$('tuyaEnergyNotice');if(!n)return;n.hidden=!message;n.textContent=message;
+}
+async function loadTuyaQuickTotals(){
+  const day=pkToday(),month=pkMonth();
+  try{
+    const [d,m]=await Promise.all([fetchTuyaRange('day',day),fetchTuyaRange('month',month)]);
+    set('tuyaTodayImport',nullableKwh(d.importKwh));set('tuyaTodayExport',nullableKwh(d.exportKwh));
+    set('tuyaMonthImport',nullableKwh(m.importKwh));set('tuyaMonthExport',nullableKwh(m.exportKwh));
+    set('tuyaTodayLabel',d.label||'Today');set('tuyaMonthLabel',m.label||'This month');
+    tuyaQuickLoaded=true;setTuyaEnergyNotice('');
+  }catch(error){setTuyaEnergyNotice(`Tuya daily/monthly totals: ${error.message}`);}
+}
+async function loadSelectedTuyaEnergy(){
+  const day=$('tuyaDayPicker'),month=$('tuyaMonthPicker');
+  const value=tuyaRangeMode==='day'?(day?.value||pkToday()):(month?.value||pkMonth());
+  set('tuyaSelectedLabel','Loading…');set('tuyaSelectedStatus','Reading Tuya report logs');
+  try{
+    const d=await fetchTuyaRange(tuyaRangeMode,value);
+    set('tuyaSelectedLabel',d.label||value);set('tuyaSelectedImport',nullableKwh(d.importKwh));set('tuyaSelectedExport',nullableKwh(d.exportKwh));set('tuyaSelectedNet',nullableKwh(d.netKwh));
+    set('tuyaSelectedStatus',d.complete?'Complete period':'Current period • updates automatically');setTuyaEnergyNotice(d.note||'');
+  }catch(error){set('tuyaSelectedLabel',value);set('tuyaSelectedImport','-- kWh');set('tuyaSelectedExport','-- kWh');set('tuyaSelectedNet','-- kWh');set('tuyaSelectedStatus','Unavailable');setTuyaEnergyNotice(`Selected Tuya period: ${error.message}`);}
+}
+function initTuyaPickers(){
+  const today=pkToday(),month=pkMonth();const d=$('tuyaDayPicker'),m=$('tuyaMonthPicker');
+  if(d){d.value=today;d.max=today;} if(m){m.value=month;m.max=month;}
 }
 async function loadWeather(){
   try{const r=await fetch('/api/master/weather',{cache:'no-store'});const w=await r.json();const d=w.data||{};const t=d.temperature??d.temperature_2m??d.current?.temperature_2m;if(Number.isFinite(Number(t)))set('weather',`☁ ${Math.round(Number(t))}° Gujrat`);}catch(_error){}
@@ -132,7 +187,7 @@ function renderTuya(m){
   const modeEl=$('tuyaMode');
   if(!m){
     blank(['tuyaImportGaugeText','tuyaExportGaugeText','tuyaImportTotal','tuyaExportTotal','tuyaVoltage','tuyaCurrent','tuyaPf','tuyaTemp']);
-    fixedGauge('tuyaImportGauge',0,20000,'red'); fixedGauge('tuyaExportGauge',0,20000,'green');
+    fixedGauge('tuyaImportGauge',0,5000,'red'); fixedGauge('tuyaExportGauge',0,6000,'green');
     set('tuyaMode','OFFLINE'); if(modeEl)modeEl.className='tuyaDirection idle'; return;
   }
   const mode=String(m.mode||'IDLE').toUpperCase();
@@ -143,7 +198,7 @@ function renderTuya(m){
   set('tuyaCurrent',m.currentA==null?'-- A':`${finite(m.currentA).toFixed(3)} A`);
   set('tuyaPf',m.powerFactor==null?'--':finite(m.powerFactor).toFixed(3));
   set('tuyaTemp',m.temperatureC==null?'-- °C':`${Math.round(finite(m.temperatureC))} °C`);
-  fixedGauge('tuyaImportGauge',m.importW,20000,'red'); fixedGauge('tuyaExportGauge',m.exportW,20000,'green');
+  fixedGauge('tuyaImportGauge',m.importW,5000,'red'); fixedGauge('tuyaExportGauge',m.exportW,6000,'green');
   set('tuyaMode',mode); if(modeEl)modeEl.className=`tuyaDirection ${mode==='IMPORTING'?'importing':mode==='EXPORTING'?'exporting':'idle'}`;
 }
 function renderCombined(c,a,b,u){
@@ -255,6 +310,6 @@ function drawAll(){
   drawEnergyBars();
 }
 
-async function start(){await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadWeather()]);setInterval(loadLive,10000);setInterval(()=>loadHistory(activeHours),60000);setInterval(()=>loadEnergy(activeEnergyPeriod),60000);setInterval(loadWeather,600000);}
+async function start(){initTuyaPickers();await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadWeather(),loadTuyaQuickTotals()]);await loadSelectedTuyaEnergy();setInterval(loadLive,10000);setInterval(()=>loadHistory(activeHours),60000);setInterval(()=>loadEnergy(activeEnergyPeriod),60000);setInterval(loadTuyaQuickTotals,300000);setInterval(loadWeather,600000);}
 window.addEventListener('resize',()=>requestAnimationFrame(drawAll));
 start();

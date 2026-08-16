@@ -670,6 +670,24 @@ async function historyStats() {
   }
 }
 
+
+async function fetchTuyaEnergyRange(params) {
+  const type = String(params.type || "day").toLowerCase();
+  const qs = new URLSearchParams({ type });
+  if (type === "day") {
+    const date = String(params.date || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Invalid Tuya day selection");
+    qs.set("date", date);
+  } else if (type === "month") {
+    const month = String(params.month || "");
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new Error("Invalid Tuya month selection");
+    qs.set("month", month);
+  } else {
+    throw new Error("Tuya range type must be day or month");
+  }
+  return getJson(`${TUYA_API_BASE}/api/energy-range?${qs.toString()}`, { timeoutMs: 20000 });
+}
+
 async function fetchWeather() {
   try {
     const payload = await getJson(`${MATRIX_API_BASE}/api/weather`, { timeoutMs: 8000 });
@@ -698,6 +716,11 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, stored, updatedAt: live.updatedAt, history: await historyStats() });
     }
     if (url.pathname === "/api/master/weather") return json(res, 200, await fetchWeather());
+    if (url.pathname === "/api/master/tuya-energy") return json(res, 200, await fetchTuyaEnergyRange({
+      type: url.searchParams.get("type"),
+      date: url.searchParams.get("date"),
+      month: url.searchParams.get("month")
+    }));
     if (url.pathname === "/api/health") return json(res, 200, {
       success: true,
       service: "Raja Fraz Master Solar Command Center - Three Inverter Edition",
