@@ -289,6 +289,8 @@ function normalizeTuyaMeter(payload) {
     powerW,
     importW: detected === "IMPORTING" ? powerW : 0,
     exportW: detected === "EXPORTING" ? powerW : 0,
+    importPctMdi: detected === "IMPORTING" ? (powerW / 5000 * 100) : 0,
+    exportPctDg: detected === "EXPORTING" ? (powerW / 6000 * 100) : 0,
     voltage: asNullableNumber(s.voltage),
     currentA: asNullableNumber(s.currentA),
     powerFactor: asNullableNumber(s.powerFactor),
@@ -671,6 +673,10 @@ async function historyStats() {
 }
 
 
+async function fetchTuyaEnergyStats() {
+  return getJson(`${TUYA_API_BASE}/api/energy-stats`, { timeoutMs: 20000 });
+}
+
 async function fetchTuyaEnergyRange(params) {
   const type = String(params.type || "day").toLowerCase();
   const qs = new URLSearchParams({ type });
@@ -716,6 +722,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, stored, updatedAt: live.updatedAt, history: await historyStats() });
     }
     if (url.pathname === "/api/master/weather") return json(res, 200, await fetchWeather());
+    if (url.pathname === "/api/master/tuya-energy-stats") return json(res, 200, await fetchTuyaEnergyStats());
     if (url.pathname === "/api/master/tuya-energy") return json(res, 200, await fetchTuyaEnergyRange({
       type: url.searchParams.get("type"),
       date: url.searchParams.get("date"),
@@ -740,7 +747,7 @@ const server = http.createServer(async (req, res) => {
     const body = readFileSync(path);
     res.writeHead(200, {
       "Content-Type": MIME[extname(path)] || "application/octet-stream",
-      "Cache-Control": extname(path) === ".html" ? "no-cache" : "public, max-age=120"
+      "Cache-Control": "no-store, no-cache, must-revalidate"
     });
     res.end(body);
   } catch (error) {

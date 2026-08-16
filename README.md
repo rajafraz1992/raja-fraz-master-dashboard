@@ -131,3 +131,13 @@ This requires the companion **Tuya Grid Dashboard V9 History API** to be deploye
 ## V17 Tuya gauge percentages
 
 The physical Tuya grid gauges now display live utilization against the approved limits: Import percentage uses 5 kW MDI and Export percentage uses 6 kW DG capacity. The arc remains capped visually at 100%, while the numeric percentage can exceed 100% so an MDI/DG limit exceedance is visible.
+
+
+## V18 Tuya summary sync fix
+
+- Live Tuya import percentage is calculated against the 5 kW approved import MDI.
+- Live Tuya export percentage is calculated against the 6 kW approved DG/export capacity.
+- The browser assets are cache-busted and the server disables static caching so new dashboard JavaScript loads immediately after deploy.
+- Today's Tuya import/export cards now use `/api/energy-stats`, the same endpoint used by the standalone Tuya dashboard.
+- Month totals are loaded independently from `/api/energy-range`, so a month-history problem no longer blanks the Today cards.
+- Day/month selected-period results remain available and synchronize the matching quick-total cards.

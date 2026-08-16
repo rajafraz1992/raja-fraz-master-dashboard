@@ -24,7 +24,7 @@ function pct(v,max) { return Math.max(0,Math.min(100,Math.abs(finite(v))/Math.ma
 function gauge(id,value,max,mode) { const el=$(id); if(!el)return; el.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`; el.classList.remove('red','green'); if(mode==='grid')el.classList.add(finite(value)>=0?'red':'green'); }
 function fixedGauge(id,value,max,colorClass) { const el=$(id); if(!el)return; el.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`; el.classList.remove('red','green'); if(colorClass)el.classList.add(colorClass); }
 function liveCapacityPct(value,max) { return Math.max(0,Math.abs(finite(value))/Math.max(1,max)*100); }
-function setLiveGaugePercent(id,value,max) { const p=liveCapacityPct(value,max); set(id,`${p.toFixed(1)}%`); const el=$(id); if(el)el.classList.toggle('over',p>100); }
+function setLiveGaugePercent(id,value,max,label='') { const p=liveCapacityPct(value,max); set(id,`${p.toFixed(1)}%${label?` ${label}`:''}`); const el=$(id); if(el)el.classList.toggle('over',p>100); }
 function batteryFlowMode(value, modeText='') { const m=String(modeText||'').toLowerCase(); if(m.includes('dis')) return 'DISCHARGING'; if(m.includes('char')) return 'CHARGING'; const n=finite(value); if(Math.abs(n)<20) return 'IDLE'; return n>=0 ? 'CHARGING' : 'DISCHARGING'; }
 function batteryGauge(id,value,max,modeText='') { const el=$(id); if(!el)return; el.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`; el.classList.remove('red','green'); const mode=batteryFlowMode(value, modeText); el.classList.add(mode==='DISCHARGING'?'red':'green'); return mode; }
 function clock(){const d=new Date();set('clock',d.toLocaleTimeString('en-GB',{hour12:false}));set('date',d.toLocaleDateString('en-PK',{weekday:'short',day:'2-digit',month:'short'}));}
@@ -99,26 +99,70 @@ async function fetchTuyaRange(type,value){
   if(!response.ok||data.success===false)throw new Error(data.error||data.msg||'Tuya history unavailable');
   return data;
 }
+async function fetchTuyaStats(){
+  const response=await fetch('/api/master/tuya-energy-stats',{cache:'no-store'});
+  const data=await response.json();
+  if(!response.ok||data.success===false)throw new Error(data.error||data.msg||'Tuya today totals unavailable');
+  return data;
+}
 function setTuyaEnergyNotice(message=''){
   const n=$('tuyaEnergyNotice');if(!n)return;n.hidden=!message;n.textContent=message;
 }
 async function loadTuyaQuickTotals(){
-  const day=pkToday(),month=pkMonth();
+  const month=pkMonth();
+  const notices=[];
+  let todayOk=false, monthOk=false;
+
   try{
-    const [d,m]=await Promise.all([fetchTuyaRange('day',day),fetchTuyaRange('month',month)]);
-    set('tuyaTodayImport',nullableKwh(d.importKwh));set('tuyaTodayExport',nullableKwh(d.exportKwh));
-    set('tuyaMonthImport',nullableKwh(m.importKwh));set('tuyaMonthExport',nullableKwh(m.exportKwh));
-    set('tuyaTodayLabel',d.label||'Today');set('tuyaMonthLabel',m.label||'This month');
-    tuyaQuickLoaded=true;setTuyaEnergyNotice('');
-  }catch(error){setTuyaEnergyNotice(`Tuya daily/monthly totals: ${error.message}`);}
+    const stats=await fetchTuyaStats();
+    const t=stats.today||{};
+    set('tuyaTodayImport',nullableKwh(t.importKwh));
+    set('tuyaTodayExport',nullableKwh(t.exportKwh));
+    set('tuyaTodayLabel','Today • Tuya meter');
+    todayOk=true;
+  }catch(error){
+    try{
+      const d=await fetchTuyaRange('day',pkToday());
+      set('tuyaTodayImport',nullableKwh(d.importKwh));
+      set('tuyaTodayExport',nullableKwh(d.exportKwh));
+      set('tuyaTodayLabel',d.label||'Today');
+      todayOk=true;
+    }catch(fallbackError){
+      set('tuyaTodayImport','-- kWh'); set('tuyaTodayExport','-- kWh');
+      notices.push(`Today totals: ${fallbackError.message||error.message}`);
+    }
+  }
+
+  try{
+    const m=await fetchTuyaRange('month',month);
+    set('tuyaMonthImport',nullableKwh(m.importKwh));
+    set('tuyaMonthExport',nullableKwh(m.exportKwh));
+    set('tuyaMonthLabel',m.label||'This month');
+    monthOk=true;
+  }catch(error){
+    set('tuyaMonthImport','-- kWh'); set('tuyaMonthExport','-- kWh');
+    notices.push(`This month: ${error.message}`);
+  }
+
+  tuyaQuickLoaded=todayOk||monthOk;
+  setTuyaEnergyNotice(notices.join(' • '));
 }
 async function loadSelectedTuyaEnergy(){
   const day=$('tuyaDayPicker'),month=$('tuyaMonthPicker');
   const value=tuyaRangeMode==='day'?(day?.value||pkToday()):(month?.value||pkMonth());
-  set('tuyaSelectedLabel','Loading…');set('tuyaSelectedStatus','Reading Tuya report logs');
+  set('tuyaSelectedLabel','Loading…');set('tuyaSelectedStatus','Reading Tuya energy data');
   try{
-    const d=await fetchTuyaRange(tuyaRangeMode,value);
+    let d;
+    if(tuyaRangeMode==='day' && value===pkToday()){
+      const stats=await fetchTuyaStats();
+      const t=stats.today||{};
+      d={label:new Date().toLocaleDateString('en-GB',{timeZone:'Asia/Karachi',day:'2-digit',month:'short',year:'numeric'}),importKwh:t.importKwh,exportKwh:t.exportKwh,netKwh:t.netKwh,complete:false,note:''};
+    }else{
+      d=await fetchTuyaRange(tuyaRangeMode,value);
+    }
     set('tuyaSelectedLabel',d.label||value);set('tuyaSelectedImport',nullableKwh(d.importKwh));set('tuyaSelectedExport',nullableKwh(d.exportKwh));set('tuyaSelectedNet',nullableKwh(d.netKwh));
+    if(tuyaRangeMode==='day' && value===pkToday()){set('tuyaTodayImport',nullableKwh(d.importKwh));set('tuyaTodayExport',nullableKwh(d.exportKwh));}
+    if(tuyaRangeMode==='month' && value===pkMonth()){set('tuyaMonthImport',nullableKwh(d.importKwh));set('tuyaMonthExport',nullableKwh(d.exportKwh));}
     set('tuyaSelectedStatus',d.complete?'Complete period':'Current period • updates automatically');setTuyaEnergyNotice(d.note||'');
   }catch(error){set('tuyaSelectedLabel',value);set('tuyaSelectedImport','-- kWh');set('tuyaSelectedExport','-- kWh');set('tuyaSelectedNet','-- kWh');set('tuyaSelectedStatus','Unavailable');setTuyaEnergyNotice(`Selected Tuya period: ${error.message}`);}
 }
@@ -195,7 +239,7 @@ function renderTuya(m){
   }
   const mode=String(m.mode||'IDLE').toUpperCase();
   set('tuyaImportGaugeText',fmtPower(m.importW)); set('tuyaExportGaugeText',fmtPower(m.exportW));
-  setLiveGaugePercent('tuyaImportPercent',m.importW,5000); setLiveGaugePercent('tuyaExportPercent',m.exportW,6000);
+  setLiveGaugePercent('tuyaImportPercent',m.importW,5000,'MDI'); setLiveGaugePercent('tuyaExportPercent',m.exportW,6000,'DG');
   set('tuyaImportTotal',m.importKwh==null?'-- kWh total':`${finite(m.importKwh).toFixed(2)} kWh total`);
   set('tuyaExportTotal',m.exportKwh==null?'-- kWh total':`${finite(m.exportKwh).toFixed(2)} kWh total`);
   set('tuyaVoltage',m.voltage==null?'-- V':`${finite(m.voltage).toFixed(1)} V`);
