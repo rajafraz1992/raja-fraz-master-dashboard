@@ -691,7 +691,7 @@ async function fetchTuyaEnergyRange(params) {
   } else {
     throw new Error("Tuya range type must be day or month");
   }
-  return getJson(`${TUYA_API_BASE}/api/energy-range?${qs.toString()}`, { timeoutMs: 20000 });
+  return getJson(`${TUYA_API_BASE}/api/energy-range?${qs.toString()}`, { timeoutMs: type === "month" ? 30000 : 20000 });
 }
 
 async function fetchWeather() {

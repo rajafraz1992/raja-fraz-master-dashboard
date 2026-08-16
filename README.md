@@ -1,3 +1,9 @@
+# Raja Fraz Master Dashboard - V19
+
+V19 keeps the V18 live MDI percentages and Today totals, and is paired with Tuya V11 for reliable Month selection and This Month Import/Export.
+
+Deploy Tuya V11 first, wait for Render to become Live, then deploy this Master V19 package.
+
 # Raja Fraz Master Dashboard V17 — Tuya Live MDI Percentages
 
 # Raja Fraz Master Solar Command Center - Three Inverter + Tuya Meter Edition
