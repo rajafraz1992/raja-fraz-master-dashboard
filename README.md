@@ -1,3 +1,5 @@
+# Raja Fraz Master Dashboard V17 — Tuya Live MDI Percentages
+
 # Raja Fraz Master Solar Command Center - Three Inverter + Tuya Meter Edition
 
 Professional master monitoring for the three-inverter topology plus the independent Tuya physical utility meter.
@@ -124,3 +126,8 @@ This requires the companion **Tuya Grid Dashboard V9 History API** to be deploye
 - Tuya Grid Import gauge maximum: **5 kW** (approved WAPDA load / MDI).
 - Tuya Grid Export gauge maximum: **6 kW** (approved DG capacity / MDI).
 - Live readings, daily/monthly history, and all other V15 functions are unchanged.
+
+
+## V17 Tuya gauge percentages
+
+The physical Tuya grid gauges now display live utilization against the approved limits: Import percentage uses 5 kW MDI and Export percentage uses 6 kW DG capacity. The arc remains capped visually at 100%, while the numeric percentage can exceed 100% so an MDI/DG limit exceedance is visible.
