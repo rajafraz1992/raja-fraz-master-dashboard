@@ -36,6 +36,12 @@ const MATRIX_API_BASE = String(
   process.env.MATRIX_API_BASE || "https://fronus-matrix-dashboard.onrender.com"
 ).replace(/\/$/, "");
 
+// Independent physical utility meter. This is intentionally separate from the
+// inverter grid calculations so both readings can be compared on the Master UI.
+const TUYA_API_BASE = String(
+  process.env.TUYA_API_BASE || "https://tuya-meter-dashboard.onrender.com"
+).replace(/\/$/, "");
+
 const RATE = Number(process.env.ELECTRICITY_RATE_PKR || 60);
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const HISTORY_SAMPLE_SECONDS = Math.max(30, Number(process.env.HISTORY_SAMPLE_SECONDS || 60));
@@ -59,6 +65,7 @@ let dbReady = false;
 let lastStoredAt = 0;
 let lastLiveCache = null;
 let lastLiveCacheAt = 0;
+let tuyaDirectionState = { importKwh: null, exportKwh: null, mode: "IDLE", lastDirectionAt: 0 };
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -235,6 +242,62 @@ function normalizeMatrixUps(payload) {
     ignoredSolarW: first(s, ["solarWatts", "solarW"], 0),
     health: "Excellent",
     updatedAt: num(s.receivedAt || s.collectionTime || Date.now())
+  };
+}
+
+function normalizeTuyaMeter(payload) {
+  const s = payload && typeof payload === "object" ? payload : {};
+  const asNullableNumber = (v) => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const importKwh = asNullableNumber(s.importKwh);
+  const exportKwh = asNullableNumber(s.exportKwh);
+  const powerW = Math.abs(num(s.powerW));
+  const now = Date.now();
+  const eps = 0.000001;
+  let detected = "";
+
+  if (tuyaDirectionState.importKwh != null && tuyaDirectionState.exportKwh != null && importKwh != null && exportKwh != null) {
+    const di = importKwh - tuyaDirectionState.importKwh;
+    const de = exportKwh - tuyaDirectionState.exportKwh;
+    if (di >= -eps && de >= -eps) {
+      if (de > di + eps && de > eps) detected = "EXPORTING";
+      else if (di > de + eps && di > eps) detected = "IMPORTING";
+    }
+  }
+
+  if (powerW < 30) detected = "IDLE";
+  if (!detected && powerW >= 30) {
+    const recentDirection = ["IMPORTING", "EXPORTING"].includes(tuyaDirectionState.mode) && now - tuyaDirectionState.lastDirectionAt < 15 * 60 * 1000;
+    detected = recentDirection ? tuyaDirectionState.mode : "IMPORTING";
+  }
+  if (!detected) detected = "IDLE";
+
+  if (["IMPORTING", "EXPORTING"].includes(detected)) tuyaDirectionState.lastDirectionAt = now;
+  if (importKwh != null) tuyaDirectionState.importKwh = importKwh;
+  if (exportKwh != null) tuyaDirectionState.exportKwh = exportKwh;
+  tuyaDirectionState.mode = detected;
+
+  const parsedUpdated = Date.parse(String(s.updatedAt || ""));
+  return {
+    key: "tuya",
+    name: "Tuya Physical Grid Meter",
+    online: s.success !== false && s.online !== false,
+    mode: detected,
+    powerW,
+    importW: detected === "IMPORTING" ? powerW : 0,
+    exportW: detected === "EXPORTING" ? powerW : 0,
+    voltage: asNullableNumber(s.voltage),
+    currentA: asNullableNumber(s.currentA),
+    powerFactor: asNullableNumber(s.powerFactor),
+    temperatureC: asNullableNumber(s.temperatureC),
+    importKwh,
+    exportKwh,
+    netKwh: asNullableNumber(s.netKwh),
+    updatedAt: Number.isFinite(parsedUpdated) ? parsedUpdated : now,
+    directionSource: "cumulative-counter-delta + live active power"
   };
 }
 
@@ -450,10 +513,11 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
   }
   const systems = {};
   const errors = {};
-  const [aResult, bResult, uResult] = await Promise.allSettled([
+  const [aResult, bResult, uResult, tResult] = await Promise.allSettled([
     getPv14000Json("/api/live?fresh=1").then(normalizePv14000),
     getPv9000Json("/api/live?fresh=1").then(normalizePv9000),
-    getJson(`${MATRIX_API_BASE}/api/matrix`).then(normalizeMatrixUps)
+    getJson(`${MATRIX_API_BASE}/api/matrix`).then(normalizeMatrixUps),
+    getJson(`${TUYA_API_BASE}/api/meter`).then(normalizeTuyaMeter)
   ]);
 
   if (aResult.status === "fulfilled") systems.pv14000 = aResult.value;
@@ -462,6 +526,9 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
   else errors.pv9000 = sourceHint("PV9000", bResult.reason);
   if (uResult.status === "fulfilled") systems.matrix = uResult.value;
   else errors.matrix = uResult.reason.message;
+  let meter = null;
+  if (tResult.status === "fulfilled") meter = tResult.value;
+  else errors.tuya = tResult.reason.message;
 
   systems.combined = combine(systems.pv14000, systems.pv9000, systems.matrix);
   const connected = [systems.pv14000, systems.pv9000, systems.matrix].filter(Boolean).length;
@@ -471,10 +538,12 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
     connected,
     totalSystems: 3,
     systems,
+    meter,
     errors,
     updatedAt: Date.now(),
     refreshSeconds: 10,
     matrixFrameSeconds: 60,
+    tuyaPollSeconds: 10,
     rate: RATE,
     capacities: {
       pv14000PvW: PV14000_PV_INSTALLED_W,

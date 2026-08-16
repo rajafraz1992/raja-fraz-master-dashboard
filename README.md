@@ -1,6 +1,6 @@
-# Raja Fraz Master Solar Command Center - Three Inverter Edition
+# Raja Fraz Master Solar Command Center - Three Inverter + Tuya Meter Edition
 
-Professional master monitoring for the new three-inverter topology.
+Professional master monitoring for the three-inverter topology plus the independent Tuya physical utility meter.
 
 ## Physical system
 
@@ -65,6 +65,24 @@ PV9000_LOAD_INCLUDES_SMART=false
 
 Keep the defaults for the topology described above.
 
+## Tuya physical grid meter
+
+The Dashboard now includes a separate **TUYA REAL-TIME GRID IMPORT / EXPORT** panel. It reads the existing Tuya meter dashboard API and does **not** replace or modify the inverter-calculated grid values.
+
+- Import gauge: **red**
+- Export gauge: **green**
+- Live gauge power comes from the Tuya meter active-power reading.
+- Direction is inferred using the same V8 approach: changes in cumulative import/export counters plus live power, because this meter does not expose a signed instantaneous direction DP.
+- Grid voltage, current, power factor and meter temperature are also shown.
+
+Default service:
+
+```text
+TUYA_API_BASE=https://tuya-meter-dashboard.onrender.com
+```
+
+The default is already included in `render.yaml`, so normally no manual Render variable is required.
+
 ## Online history
 
 This edition stores new-topology samples in PostgreSQL table `master_samples_v3`. The old two-inverter history table remains untouched.
@@ -87,3 +105,10 @@ History includes PV14000, PV9000, Matrix UPS and topology-corrected combined sam
 - Master center column slightly narrower; PV14000 and PV9000 side panels slightly wider.
 - Master Battery gauge shows battery voltage instead of SOC in the lower-right reading.
 - Battery gauge remains green while charging and red while discharging.
+
+
+## V14 UI / integration update
+- Adds Tuya physical grid meter to the main Master Dashboard.
+- Separate real-time Import and Export gauges.
+- Inverter utility-grid calculations remain unchanged for comparison.
+- Existing V13 compact center layout and V12 battery power/mode/voltage gauge behavior are preserved.

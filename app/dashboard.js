@@ -20,6 +20,7 @@ function gridMode(v) { const n=finite(v); return Math.abs(n)<30?'IDLE':n>=0?'IMP
 function ageText(ts) { const s=Math.max(0,Math.round((Date.now()-finite(ts,Date.now()))/1000)); if(s<5)return'Updated now'; if(s<60)return`Updated ${s}s ago`; return`Updated ${Math.floor(s/60)}m ago`; }
 function pct(v,max) { return Math.max(0,Math.min(100,Math.abs(finite(v))/Math.max(1,max)*100)); }
 function gauge(id,value,max,mode) { const el=$(id); if(!el)return; el.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`; el.classList.remove('red','green'); if(mode==='grid')el.classList.add(finite(value)>=0?'red':'green'); }
+function fixedGauge(id,value,max,colorClass) { const el=$(id); if(!el)return; el.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`; el.classList.remove('red','green'); if(colorClass)el.classList.add(colorClass); }
 function batteryFlowMode(value, modeText='') { const m=String(modeText||'').toLowerCase(); if(m.includes('dis')) return 'DISCHARGING'; if(m.includes('char')) return 'CHARGING'; const n=finite(value); if(Math.abs(n)<20) return 'IDLE'; return n>=0 ? 'CHARGING' : 'DISCHARGING'; }
 function batteryGauge(id,value,max,modeText='') { const el=$(id); if(!el)return; el.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`; el.classList.remove('red','green'); const mode=batteryFlowMode(value, modeText); el.classList.add(mode==='DISCHARGING'?'red':'green'); return mode; }
 function clock(){const d=new Date();set('clock',d.toLocaleTimeString('en-GB',{hour12:false}));set('date',d.toLocaleDateString('en-PK',{weekday:'short',day:'2-digit',month:'short'}));}
@@ -74,19 +75,20 @@ async function loadWeather(){
 
 function render(){
   if(!live)return;
-  const s=live.systems||{}; const a=s.pv14000; const b=s.pv9000; const u=s.matrix; const c=s.combined||{};
-  renderStatus(a,b,u,c);
+  const s=live.systems||{}; const a=s.pv14000; const b=s.pv9000; const u=s.matrix; const c=s.combined||{}; const m=live.meter||null;
+  renderStatus(a,b,u,c,m);
   renderPv14000(a);
   renderPv9000(b);
   renderMatrix(u);
+  renderTuya(m);
   renderCombined(c,a,b,u);
   renderQuickTotals(c);
   renderDetailPages(a,b,u,c);
-  renderHealth(a,b,u,c,live.errors||{});
+  renderHealth(a,b,u,c,m,live.errors||{});
   drawAll();
 }
 function setState(id,online){set(id,online?'ONLINE':'OFFLINE');$(id)?.classList.toggle('online',Boolean(online));}
-function renderStatus(a,b,u,c){
+function renderStatus(a,b,u,c,m){
   const count=[a,b,u].filter(Boolean).length;
   set('systemsOnline',`${count}/3`);
   setState('pv14000Online',a); setState('pv14000PageStatus',a);
@@ -97,10 +99,12 @@ function renderStatus(a,b,u,c){
   set('pv14000Fresh',a?ageText(a.updatedAt):'API unavailable');
   set('pv9000Fresh',b?ageText(b.updatedAt):'API not configured / unavailable');
   set('matrixFresh',u?ageText(u.updatedAt):'API unavailable');
+  setState('tuyaOnline',Boolean(m?.online)); set('tuyaFresh',m?ageText(m.updatedAt):'Meter API unavailable');
   const notice=[];
   if(live.errors?.pv14000)notice.push(`PV14000: ${live.errors.pv14000}`);
   if(live.errors?.pv9000)notice.push(`PV9000: ${live.errors.pv9000}`);
   if(live.errors?.matrix)notice.push(`Matrix: ${live.errors.matrix}`);
+  if(live.errors?.tuya)notice.push(`Tuya meter: ${live.errors.tuya}`);
   const n=$('masterNotice'); if(n){n.hidden=!notice.length;n.textContent=notice.join(' • ');}
 }
 function blank(ids){ids.forEach(id=>set(id,'--'));}
@@ -123,6 +127,24 @@ function renderMatrix(u){
   set('matrixInputGaugeText',fmtPower(u.acInputW)); set('matrixInputV',`${finite(u.acInputV).toFixed(1)} V`); set('matrixLoadGaugeText',fmtPower(u.loadW));
   set('matrixBattery',fmtPct(u.batteryPct)); set('matrixBatteryPower',fmtSignedPower(u.batteryW)); set('matrixTemp',`${Math.round(finite(u.transformer||u.temp))}°C`);
   gauge('matrixInputGauge',u.acInputW,6000); gauge('matrixLoadGauge',u.loadW,6000);
+}
+function renderTuya(m){
+  const modeEl=$('tuyaMode');
+  if(!m){
+    blank(['tuyaImportGaugeText','tuyaExportGaugeText','tuyaImportTotal','tuyaExportTotal','tuyaVoltage','tuyaCurrent','tuyaPf','tuyaTemp']);
+    fixedGauge('tuyaImportGauge',0,20000,'red'); fixedGauge('tuyaExportGauge',0,20000,'green');
+    set('tuyaMode','OFFLINE'); if(modeEl)modeEl.className='tuyaDirection idle'; return;
+  }
+  const mode=String(m.mode||'IDLE').toUpperCase();
+  set('tuyaImportGaugeText',fmtPower(m.importW)); set('tuyaExportGaugeText',fmtPower(m.exportW));
+  set('tuyaImportTotal',m.importKwh==null?'-- kWh total':`${finite(m.importKwh).toFixed(2)} kWh total`);
+  set('tuyaExportTotal',m.exportKwh==null?'-- kWh total':`${finite(m.exportKwh).toFixed(2)} kWh total`);
+  set('tuyaVoltage',m.voltage==null?'-- V':`${finite(m.voltage).toFixed(1)} V`);
+  set('tuyaCurrent',m.currentA==null?'-- A':`${finite(m.currentA).toFixed(3)} A`);
+  set('tuyaPf',m.powerFactor==null?'--':finite(m.powerFactor).toFixed(3));
+  set('tuyaTemp',m.temperatureC==null?'-- °C':`${Math.round(finite(m.temperatureC))} °C`);
+  fixedGauge('tuyaImportGauge',m.importW,20000,'red'); fixedGauge('tuyaExportGauge',m.exportW,20000,'green');
+  set('tuyaMode',mode); if(modeEl)modeEl.className=`tuyaDirection ${mode==='IMPORTING'?'importing':mode==='EXPORTING'?'exporting':'idle'}`;
 }
 function renderCombined(c,a,b,u){
   set('combinedSolarHero',fmtPower(c.solarW)); set('combinedDemandHero',fmtPower(c.siteDemandW)); set('combinedNet',fmtPower(c.gridW)); set('combinedMode',gridMode(c.gridW));
@@ -163,14 +185,14 @@ function renderDetailPages(a,b,u,c){
   ]);
 }
 function healthRows(rows){return rows.map(([k,v,ok])=>`<div class="healthRow"><span>${k}</span><b class="${ok===false?'badText':'okText'}">${v}</b></div>`).join('');}
-function renderHealth(a,b,u,c,errors){
+function renderHealth(a,b,u,c,m,errors){
   $('pv14000Health').innerHTML=healthRows([['API connection',a?'ONLINE':'OFFLINE',Boolean(a)],['Last update',a?ageText(a.updatedAt):'--',Boolean(a)],['PV capacity','6.78 kWp',true],['AC capacity','10 kW',true]]);
   $('pv9000Health').innerHTML=healthRows([['API connection',b?'ONLINE':'OFFLINE',Boolean(b)],['Last update',b?ageText(b.updatedAt):'--',Boolean(b)],['PV capacity','4.36 kWp',true],['Feeds','UPS + Smart Load',Boolean(b)]]);
   $('matrixHealth').innerHTML=healthRows([['API connection',u?'ONLINE':'OFFLINE',Boolean(u)],['Role','UPS / BACKUP',true],['PV installed','0 W',true],['Battery',u?fmtPct(u.batteryPct):'--',Boolean(u)]]);
   const historyOnline=Boolean(live?.history?.online); const count=[a,b,u].filter(Boolean).length;
-  $('combinedHealth').innerHTML=healthRows([['Connected systems',`${count}/3`,count===3],['Total PV','11.14 kWp',true],['Utility grid sources','PV14000 + PV9000',true],['Online history',historyOnline?'PostgreSQL ACTIVE':'Fallback',historyOnline],['Overall',count===3?'Excellent':'Partial',count===3]]);
+  $('combinedHealth').innerHTML=healthRows([['Connected systems',`${count}/3`,count===3],['Tuya physical meter',m?.online?'ONLINE':'OFFLINE',Boolean(m?.online)],['Tuya direction',m?.mode||'--',Boolean(m?.online)],['Total PV','11.14 kWp',true],['Utility grid sources','PV14000 + PV9000',true],['Online history',historyOnline?'PostgreSQL ACTIVE':'Fallback',historyOnline],['Overall',count===3?'Excellent':'Partial',count===3]]);
   set('healthPill',count===3?'ALL NORMAL':'ATTENTION'); $('healthPill')?.classList.toggle('good',count===3);
-  const messages=[]; if(errors.pv14000)messages.push(`PV14000: ${errors.pv14000}`); if(errors.pv9000)messages.push(`PV9000: ${errors.pv9000}`); if(errors.matrix)messages.push(`Matrix: ${errors.matrix}`);
+  const messages=[]; if(errors.pv14000)messages.push(`PV14000: ${errors.pv14000}`); if(errors.pv9000)messages.push(`PV9000: ${errors.pv9000}`); if(errors.matrix)messages.push(`Matrix: ${errors.matrix}`); if(errors.tuya)messages.push(`Tuya meter: ${errors.tuya}`);
   set('diagnosticNotice',messages.length?messages.join(' • '):'✓ Three-system topology is connected. Matrix internal AC transfer is excluded from utility-grid totals.'); set('alertCount',messages.length);
 }
 

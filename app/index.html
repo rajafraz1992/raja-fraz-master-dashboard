@@ -27,7 +27,7 @@
     <div class="siteTitles">
       <div class="eyebrow">MASTER SOLAR COMMAND CENTER</div>
       <h1>Raja Fraz Solar Estate</h1>
-      <p>3 inverters • 2 solar inverters • 1 dedicated UPS • 11.14 kWp total PV</p>
+      <p>3 inverters • 2 solar inverters • 1 dedicated UPS • Tuya physical grid meter • 11.14 kWp total PV</p>
     </div>
     <div class="headerStatus">
       <div class="statusChip" id="weather">☁ Gujrat</div>
@@ -84,6 +84,23 @@
           <div class="miniStrip"><div><span>Today solar</span><b id="pv9000TodaySolar">--</b></div><div><span>Temperature</span><b id="pv9000Temp">--</b></div><div><span>Feeds</span><b>UPS + Smart</b></div></div>
         </article>
       </div>
+
+      <article class="tuyaPanel">
+        <div class="tuyaHeader">
+          <div><div class="eyebrow">PHYSICAL UTILITY METER • TUYA / SMART LIFE</div><h3>Real-Time Grid Import / Export</h3><p>Independent physical meter reading • separate from inverter-calculated grid values.</p></div>
+          <div class="tuyaHeaderStatus"><small id="tuyaFresh">Waiting for meter</small><b id="tuyaOnline" class="state">CHECKING</b><span id="tuyaMode" class="tuyaDirection idle">IDLE</span></div>
+        </div>
+        <div class="tuyaBody">
+          <div class="tuyaGauge importGauge"><h3>Grid Import</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="tuyaImportGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="tuyaImportGaugeText">--</b><small><span>FROM GRID</span><span id="tuyaImportTotal">-- kWh total</span></small></div>
+          <div class="tuyaGauge exportGauge"><h3>Grid Export</h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="tuyaExportGauge" class="gValue green" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="tuyaExportGaugeText">--</b><small><span>TO GRID</span><span id="tuyaExportTotal">-- kWh total</span></small></div>
+          <div class="tuyaStats">
+            <div><span>Grid Voltage</span><b id="tuyaVoltage">-- V</b></div>
+            <div><span>Current</span><b id="tuyaCurrent">-- A</b></div>
+            <div><span>Power Factor</span><b id="tuyaPf">--</b></div>
+            <div><span>Meter Temp</span><b id="tuyaTemp">-- °C</b></div>
+          </div>
+        </div>
+      </article>
 
       <article class="upsPanel">
         <div class="upsHeader">
