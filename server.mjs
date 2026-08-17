@@ -119,13 +119,23 @@ async function getJson(url, { timeoutMs = 16000, headers = {} } = {}) {
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { "User-Agent": "Raja-Fraz-Master/5.0", ...headers }
+      headers: { "User-Agent": "Raja-Fraz-Master/5.3", ...headers }
     });
     const text = await response.text();
     let data;
-    try { data = JSON.parse(text); } catch { data = { raw: text }; }
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // Render free services can return a temporary HTML loading page while a
+      // sleeping upstream service is starting. API calls must never treat that
+      // page as a valid zero-value telemetry response.
+      const error = new Error(`Upstream API is waking / returned non-JSON (HTTP ${response.status})`);
+      error.status = response.status;
+      error.code = "UPSTREAM_NOT_READY";
+      throw error;
+    }
     if (!response.ok) {
-      const detail = data?.error || data?.msg || data?.raw || `HTTP ${response.status}`;
+      const detail = data?.error || data?.msg || `HTTP ${response.status}`;
       const error = new Error(String(detail).slice(0, 300));
       error.status = response.status;
       throw error;
@@ -135,17 +145,20 @@ async function getJson(url, { timeoutMs = 16000, headers = {} } = {}) {
     clearTimeout(timer);
   }
 }
-async function getDashboardJson(base, path, user, password) {
+async function getDashboardJson(base, path, user, password, options = {}) {
   if (!base) {
     const error = new Error("API base URL is not configured");
     error.code = "NOT_CONFIGURED";
     throw error;
   }
   const auth = authHeader(user, password);
-  return getJson(`${base}${path}`, { headers: auth ? { Authorization: auth } : {} });
+  return getJson(`${base}${path}`, {
+    ...options,
+    headers: { ...(options.headers || {}), ...(auth ? { Authorization: auth } : {}) }
+  });
 }
-const getPv14000Json = (path) => getDashboardJson(PV14000_API_BASE, path, PV14000_USER, PV14000_PASSWORD);
-const getPv9000Json = (path) => getDashboardJson(PV9000_API_BASE, path, PV9000_USER, PV9000_PASSWORD);
+const getPv14000Json = (path, options = {}) => getDashboardJson(PV14000_API_BASE, path, PV14000_USER, PV14000_PASSWORD, options);
+const getPv9000Json = (path, options = {}) => getDashboardJson(PV9000_API_BASE, path, PV9000_USER, PV9000_PASSWORD, options);
 
 function normalizeSolarInverter(payload, config) {
   const s = unwrap(payload);
@@ -580,6 +593,79 @@ function sourceHint(label, error) {
   return error.message;
 }
 
+// --- Render free-tier cold-start helper -----------------------------------
+// When Master wakes, its upstream dashboards may still be sleeping. Wake all
+// configured sources in parallel and keep retrying until their real JSON API
+// responds. This removes the need to manually open every Render project.
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let wakeInFlight = null;
+let lastWakeResult = null;
+let lastWakeAt = 0;
+
+async function wakeOneSource(label, operation, { maxWaitMs = 90000, retryMs = 4500 } = {}) {
+  const startedAt = Date.now();
+  let attempts = 0;
+  let lastError = "";
+
+  while (Date.now() - startedAt < maxWaitMs) {
+    attempts += 1;
+    try {
+      await operation();
+      return { ready: true, configured: true, attempts, elapsedMs: Date.now() - startedAt };
+    } catch (error) {
+      lastError = error?.message || String(error);
+      // Bad credentials/configuration will not improve by waiting.
+      if (error?.status === 401 || error?.status === 403 || error?.code === "NOT_CONFIGURED") break;
+    }
+
+    const remaining = maxWaitMs - (Date.now() - startedAt);
+    if (remaining <= 0) break;
+    await sleep(Math.min(retryMs, remaining));
+  }
+
+  return { ready: false, configured: true, attempts, elapsedMs: Date.now() - startedAt, error: lastError || `${label} did not become ready` };
+}
+
+async function wakeAllSources({ force = false } = {}) {
+  // If everything was confirmed ready recently, avoid unnecessary extra calls.
+  if (!force && lastWakeResult && lastWakeResult.allReady && Date.now() - lastWakeAt < 10 * 60 * 1000) {
+    return { ...lastWakeResult, cached: true };
+  }
+  if (wakeInFlight) return wakeInFlight;
+
+  wakeInFlight = (async () => {
+    const checks = [
+      ["pv14000", Boolean(PV14000_API_BASE), () => getPv14000Json("/api/live?fresh=1", { timeoutMs: 14000 })],
+      ["pv9000", Boolean(PV9000_API_BASE), () => getPv9000Json("/api/live?fresh=1", { timeoutMs: 14000 })],
+      ["matrix", Boolean(MATRIX_API_BASE), () => getJson(`${MATRIX_API_BASE}/api/matrix`, { timeoutMs: 14000 })],
+      ["tuya", Boolean(TUYA_API_BASE), () => getJson(`${TUYA_API_BASE}/api/meter`, { timeoutMs: 14000 })]
+    ];
+
+    const pairs = await Promise.all(checks.map(async ([key, configured, operation]) => {
+      if (!configured) return [key, { ready: false, configured: false, skipped: true, attempts: 0, elapsedMs: 0 }];
+      return [key, await wakeOneSource(key, operation)];
+    }));
+
+    const sources = Object.fromEntries(pairs);
+    const configuredEntries = Object.values(sources).filter((x) => x.configured);
+    const readyCount = configuredEntries.filter((x) => x.ready).length;
+    const result = {
+      ok: readyCount > 0,
+      allReady: configuredEntries.length > 0 && readyCount === configuredEntries.length,
+      readyCount,
+      totalConfigured: configuredEntries.length,
+      sources,
+      updatedAt: Date.now(),
+      note: "Cold-start wake only; no always-on keepalive is used."
+    };
+    lastWakeAt = Date.now();
+    lastWakeResult = result;
+    return result;
+  })().finally(() => { wakeInFlight = null; });
+
+  return wakeInFlight;
+}
+
 async function initDb() {
   if (!pool) return false;
   try {
@@ -867,6 +953,7 @@ function staticPath(urlPath) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    if (url.pathname === "/api/master/wake") return json(res, 200, await wakeAllSources({ force: url.searchParams.get("force") === "1" }));
     if (url.pathname === "/api/master/live") return json(res, 200, await fetchLive());
     if (url.pathname === "/api/master/energy") return json(res, 200, await fetchEnergy(String(url.searchParams.get("period") || "T")));
     if (url.pathname === "/api/master/history") return json(res, 200, await fetchHistory(Math.max(1, Math.min(720, num(url.searchParams.get("hours"), 24)))));
@@ -911,7 +998,15 @@ const server = http.createServer(async (req, res) => {
 });
 
 await initDb();
-server.listen(PORT, () => console.log(`Raja Fraz Three-Inverter Master Dashboard running on ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Raja Fraz Three-Inverter Master Dashboard running on ${PORT}`);
+  // Start waking dependencies as soon as Master itself is awake. The browser's
+  // /api/master/wake call reuses this same in-flight promise.
+  const timer = setTimeout(() => {
+    wakeAllSources().catch((error) => console.error("Source wake-up:", error.message));
+  }, 500);
+  timer.unref?.();
+});
 
 setInterval(async () => {
   try {

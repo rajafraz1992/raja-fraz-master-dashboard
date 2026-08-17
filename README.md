@@ -1,3 +1,9 @@
+
+## V21 - Render cold-start auto wake
+
+V21 automatically wakes the configured PV14000, PV9000, Matrix and Tuya Render services whenever the Master Dashboard itself starts. The UI shows `WAKING SOURCES` while the free Render services spin up, then loads live data automatically. You no longer need to open each upstream dashboard manually.
+
+The wake logic is **on-demand only**. It does not add an external always-on keepalive service. It also rejects temporary non-JSON Render loading pages so they cannot be mistaken for real zero-value telemetry.
 # Raja Fraz Master Dashboard - V20
 
 V20 keeps the V19 Tuya monthly-history fixes and corrects live Tuya grid direction. Smart Life/Tuya **Consumption = Import** and **Generate = Export** whenever that status is present in the raw Tuya meter response.

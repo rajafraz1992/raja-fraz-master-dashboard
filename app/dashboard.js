@@ -65,6 +65,25 @@ $('tuyaLoadPeriod')?.addEventListener('click',loadSelectedTuyaEnergy);
 $('tuyaDayPicker')?.addEventListener('change',loadSelectedTuyaEnergy);
 $('tuyaMonthPicker')?.addEventListener('change',loadSelectedTuyaEnergy);
 
+async function wakeMasterSources(){
+  set('liveChip','◌ WAKING SOURCES…');
+  $('liveChip')?.classList.remove('live');
+  try{
+    const response=await fetch('/api/master/wake',{cache:'no-store'});
+    const data=await response.json();
+    const ready=finite(data.readyCount); const total=finite(data.totalConfigured);
+    if(data.allReady){
+      set('liveChip','● SOURCES READY');
+      $('liveChip')?.classList.add('live');
+    }else{
+      set('liveChip',`◌ READY ${ready}/${total}`);
+    }
+    return data;
+  }catch(error){
+    set('liveChip','◌ WAKE RETRY');
+    return null;
+  }
+}
 async function loadLive(){
   try{
     const response=await fetch('/api/master/live',{cache:'no-store'});
@@ -358,6 +377,6 @@ function drawAll(){
   drawEnergyBars();
 }
 
-async function start(){initTuyaPickers();await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadWeather(),loadTuyaQuickTotals()]);await loadSelectedTuyaEnergy();setInterval(loadLive,10000);setInterval(()=>loadHistory(activeHours),60000);setInterval(()=>loadEnergy(activeEnergyPeriod),60000);setInterval(loadTuyaQuickTotals,300000);setInterval(loadWeather,600000);}
+async function start(){initTuyaPickers();await wakeMasterSources();await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadWeather(),loadTuyaQuickTotals()]);await loadSelectedTuyaEnergy();setInterval(loadLive,10000);setInterval(()=>loadHistory(activeHours),60000);setInterval(()=>loadEnergy(activeEnergyPeriod),60000);setInterval(loadTuyaQuickTotals,300000);setInterval(loadWeather,600000);}
 window.addEventListener('resize',()=>requestAnimationFrame(drawAll));
 start();
