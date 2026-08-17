@@ -222,6 +222,7 @@ function render(){
   renderQuickTotals(c);
   renderDetailPages(a,b,u,c);
   renderHealth(a,b,u,c,m,live.errors||{});
+  renderEnergyFlow(a,b,u,c,m);
   drawAll();
 }
 function setState(id,online){set(id,online?'ONLINE':'OFFLINE');$(id)?.classList.toggle('online',Boolean(online));}
@@ -301,6 +302,122 @@ function renderQuickTotals(c){
   set('todaySolar',fmtKwh(c.todaySolar)); set('todayLoad',fmtKwh(c.todayLoad)); set('todayImport',fmtKwh(c.todayImport)); set('todayExport',fmtKwh(c.todayExport));
   if(energy)renderEnergy();
 }
+
+function setFlowNodeState(id, online, active=false){
+  const el=$(id); if(!el)return;
+  el.classList.toggle('offline', !online);
+  el.classList.toggle('active', Boolean(active));
+}
+function setFlowLine(id, active, direction='forward', modeClass=''){
+  const el=$(id); if(!el)return;
+  el.classList.toggle('active', Boolean(active));
+  el.classList.toggle('reverse', direction==='reverse');
+  ['importing','exporting','charging','discharging'].forEach(c=>el.classList.remove(c));
+  if(modeClass)el.classList.add(modeClass);
+}
+function setFlowLabel(id, className=''){
+  const raw=$(id); if(!raw)return;
+  const el=raw.classList.contains('flowLabel')?raw:(raw.closest('.flowLabel')||raw);
+  el.classList.remove('off','gridImport','gridExport','solar','smart','ups','batteryCharge','batteryDischarge');
+  if(className)className.split(' ').forEach(c=>c&&el.classList.add(c));
+}
+function flowGridFromMeterOrInverter(c,m){
+  if(m?.online){
+    const importW=finite(m.importW), exportW=finite(m.exportW);
+    if(importW>30)return{mode:'IMPORTING',watts:importW,source:'Tuya physical meter'};
+    if(exportW>30)return{mode:'EXPORTING',watts:exportW,source:'Tuya physical meter'};
+    return{mode:'IDLE',watts:0,source:'Tuya physical meter'};
+  }
+  const w=finite(c?.gridW);
+  if(Math.abs(w)<30)return{mode:'IDLE',watts:0,source:'Inverter estimate'};
+  return{mode:w>=0?'IMPORTING':'EXPORTING',watts:Math.abs(w),source:'Inverter estimate'};
+}
+function renderEnergyFlow(a,b,u,c={},m=null){
+  const pv14000Solar=finite(a?.solarW), pv9000Solar=finite(b?.solarW), totalSolar=finite(c?.solarW,pv14000Solar+pv9000Solar);
+  const demand=finite(c?.siteDemandW,finite(a?.loadW)+finite(b?.loadW));
+  const smart=finite(c?.smartLoadW,finite(b?.smartLoadW));
+  const grid=flowGridFromMeterOrInverter(c,m);
+  const matrixIn=finite(u?.acInputW);
+  const matrixLoad=finite(u?.loadW);
+  const batteryW=finite(u?.batteryW);
+  const batteryMode=batteryFlowMode(batteryW,u?.batteryMode);
+  const batteryActive=Math.abs(batteryW)>20;
+
+  set('flowSolarBadge',fmtPower(totalSolar));
+  set('flowDemandBadge',fmtPower(demand));
+  set('flowGridBadge',`${grid.mode==='IDLE'?'IDLE':grid.mode} ${fmtPower(grid.watts)}`);
+  set('flowBatteryBadge',u?`${fmtPct(u.batteryPct)} • ${batteryMode}`:'--');
+
+  set('flowPv14000Value',a?fmtPower(pv14000Solar):'--');
+  set('flowPv14000Sub',a?`Load ${fmtPower(a.loadW)} • ${fmtPower(a.gridW)} grid`:'PV14000 API offline');
+  set('flowPv9000Value',b?fmtPower(pv9000Solar):'--');
+  set('flowPv9000Sub',b?`Smart ${fmtPower(finite(b.smartLoadW))} • Load ${fmtPower(b.loadW)}`:'PV9000 API not configured');
+  set('flowGridValue',grid.mode==='IDLE'?'0 W':fmtPower(grid.watts));
+  set('flowGridSub',`${grid.mode} • ${grid.source}`);
+  set('flowMeterValue',m?.online?String(m.mode||grid.mode).toUpperCase():'OFFLINE');
+  set('flowMeterSub',m?.online?`${finite(m.voltage).toFixed(1)} V • ${finite(m.currentA).toFixed(2)} A`:'Tuya meter unavailable');
+  set('flowBusValue',fmtPower(totalSolar));
+  set('flowBusSub',`Demand ${fmtPower(demand)} • Grid ${grid.mode}`);
+  set('flowSiteLoadValue',fmtPower(demand));
+  set('flowSmartValue',fmtPower(smart));
+  set('flowMatrixValue',u?fmtPower(matrixIn):'--');
+  set('flowMatrixSub',u?`UPS output ${fmtPower(matrixLoad)}`:'Matrix API offline');
+  set('flowBackupValue',u?fmtPower(matrixLoad):'--');
+  set('flowBatteryValue',u?fmtPct(u.batteryPct):'--');
+  set('flowBatterySub',u?`${batteryMode} • ${fmtSignedPower(batteryW)}`:'Battery unavailable');
+
+  set('flowPv14000LineText',a?fmtPower(pv14000Solar):'--');
+  set('flowPv9000LineText',b?fmtPower(pv9000Solar):'--');
+  set('flowGridLineTitle',grid.mode==='EXPORTING'?'Site → Grid':'Grid → Site');
+  set('flowGridLineText',grid.mode==='IDLE'?'0 W':fmtPower(grid.watts));
+  set('flowSmartLineText',fmtPower(smart));
+  set('flowUpsInLineText',u?fmtPower(matrixIn):'--');
+  set('flowUpsOutLineText',u?fmtPower(matrixLoad):'--');
+  set('flowBatteryLineTitle',batteryMode==='DISCHARGING'?'Battery → Matrix':'Matrix → Battery');
+  set('flowBatteryLineText',u?fmtSignedPower(batteryW):'--');
+
+  setFlowNodeState('flowNodePv14000',Boolean(a),pv14000Solar>30);
+  setFlowNodeState('flowNodePv9000',Boolean(b),pv9000Solar>30 || smart>30 || matrixIn>30);
+  setFlowNodeState('flowNodeGrid',Boolean(m?.online)||Math.abs(finite(c?.gridW))>0,grid.watts>30);
+  setFlowNodeState('flowNodeMeter',Boolean(m?.online),grid.watts>30);
+  setFlowNodeState('flowNodeBus',true,totalSolar>30 || demand>30 || grid.watts>30);
+  setFlowNodeState('flowNodeSiteLoad',true,demand>30);
+  setFlowNodeState('flowNodeSmartLoad',Boolean(b)||smart>0,smart>30);
+  setFlowNodeState('flowNodeMatrix',Boolean(u),matrixIn>30 || matrixLoad>30 || batteryActive);
+  setFlowNodeState('flowNodeBackup',Boolean(u),matrixLoad>30);
+  setFlowNodeState('flowNodeBattery',Boolean(u),batteryActive);
+
+  setFlowLine('flowPv14000Line',pv14000Solar>30,'forward','');
+  setFlowLine('flowPv9000Line',pv9000Solar>30,'forward','');
+  const gridActive=grid.watts>30, gridExport=grid.mode==='EXPORTING';
+  setFlowLine('flowGridMeterLine',gridActive,gridExport?'reverse':'forward',gridExport?'exporting':'importing');
+  setFlowLine('flowMeterBusLine',gridActive,gridExport?'reverse':'forward',gridExport?'exporting':'importing');
+  setFlowLine('flowSiteLoadLine',demand>30,'forward','');
+  setFlowLine('flowPv9000SmartLine',smart>30,'forward','');
+  setFlowLine('flowPv9000MatrixLine',matrixIn>30,'forward','');
+  setFlowLine('flowMatrixBackupLine',matrixLoad>30,'forward','');
+  setFlowLine('flowBatteryLine',batteryActive,batteryMode==='CHARGING'?'reverse':'forward',batteryMode==='DISCHARGING'?'discharging':'charging');
+
+  setFlowLabel('flowPv14000LineText',pv14000Solar>30?'solar':'off');
+  setFlowLabel('flowPv9000LineText',pv9000Solar>30?'solar':'off');
+  setFlowLabel('flowGridLineText',gridActive?(gridExport?'gridExport':'gridImport'):'off');
+  setFlowLabel('flowSmartLineText',smart>30?'smart':'off');
+  setFlowLabel('flowUpsInLineText',matrixIn>30?'smart':'off');
+  setFlowLabel('flowUpsOutLineText',matrixLoad>30?'ups':'off');
+  setFlowLabel('flowBatteryLineText',batteryActive?(batteryMode==='DISCHARGING'?'batteryDischarge':'batteryCharge'):'off');
+
+  const seqSolar = totalSolar>30 ? `${fmtPower(totalSolar)} solar into master bus` : 'Waiting for solar generation';
+  const seqGrid = grid.mode==='IDLE' ? 'Grid exchange is idle' : `${grid.mode} ${fmtPower(grid.watts)} via Tuya meter`;
+  const seqPv9000 = `${fmtPower(smart)} smart load • ${u?fmtPower(matrixIn):'--'} UPS AC input`;
+  const seqUps = u ? `${fmtPower(matrixLoad)} backup load • battery ${fmtPct(u.batteryPct)} ${batteryMode.toLowerCase()}` : 'Matrix UPS offline';
+  set('flowSeqSolar',seqSolar); set('flowSeqGrid',seqGrid); set('flowSeqPv9000',seqPv9000); set('flowSeqUps',seqUps);
+  $$('.flowSequenceStep').forEach((el,i)=>{
+    const active=[totalSolar>30,gridActive,smart>30||matrixIn>30,matrixLoad>30||batteryActive][i];
+    el.classList.toggle('live',Boolean(active));
+    el.classList.toggle('active',Boolean(active));
+  });
+}
+
 function metricCards(rows){return rows.map(([label,value,small,cls=''])=>`<div class="detailCard ${cls}">${iconLabelHtml(label)}<b>${value}</b><small>${small||''}</small></div>`).join('');}
 function renderDetailPages(a,b,u,c){
   $('pv14000Page').innerHTML=metricCards(a?[

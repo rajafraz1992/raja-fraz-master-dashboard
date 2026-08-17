@@ -168,3 +168,17 @@ The physical Tuya grid gauges now display live utilization against the approved 
 - Solar, grid, battery, load, Smart Load, import/export, temperature and UPS use semantic icon accents.
 - Icons are embedded in the dashboard itself; no external icon CDN or extra Render setting is required.
 - V21 Render auto-wake and V20 Tuya direction fixes are preserved.
+
+## V24 update - Energy Flow tab
+
+This version keeps the V22 icon layout and adds a new **Energy Flow** tab.
+
+The Energy Flow tab includes:
+
+- Animated topology map for PV14000, PV9000, Matrix UPS, Tuya physical grid meter, battery, smart load and backup load.
+- Direction-aware utility grid flow: import is red, export is green.
+- Matrix UPS AC input is displayed as an internal PV9000 transfer and is still excluded from utility-grid totals.
+- Battery flow changes direction for charging vs discharging.
+- Mobile-friendly fallback layout.
+
+No new Render environment variables are required.

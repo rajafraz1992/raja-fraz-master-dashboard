@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#082b43">
   <title>Raja Fraz Master Solar Command Center</title>
-  <link rel="stylesheet" href="styles.css?v=22">
+  <link rel="stylesheet" href="styles.css?v=24">
 </head>
 <body>
   <svg class="iconSprite" aria-hidden="true" focusable="false">
@@ -39,6 +39,7 @@
       <button class="navtab" data-view="pv9000"><svg class="uiIcon icon-solar" aria-hidden="true"><use href="#i-sun"></use></svg><span>PV9000</span></button>
       <button class="navtab" data-view="matrix"><svg class="uiIcon icon-ups" aria-hidden="true"><use href="#i-ups"></use></svg><span>UPS Matrix</span></button>
       <button class="navtab" data-view="combined"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-bolt"></use></svg><span>Combined</span></button>
+      <button class="navtab" data-view="flow"><svg class="uiIcon icon-grid" aria-hidden="true"><use href="#i-systems"></use></svg><span>Energy Flow</span></button>
       <button class="navtab" data-view="charts"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>Charts</span></button>
       <button class="navtab" data-view="totals"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-total"></use></svg><span>Totals</span></button>
       <button class="navtab" data-view="health"><svg class="uiIcon icon-health" aria-hidden="true"><use href="#i-health"></use></svg><span>Health</span> <b id="alertCount">0</b></button>
@@ -203,6 +204,128 @@
       <div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">MASTER SITE</div><h2 class="titleWithIcon"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-systems"></use></svg><span>Combined Energy Center</span></h2><p>Solar and utility-grid totals come from PV14000 + PV9000. Matrix is downstream and excluded from double-counted totals.</p></div><span class="statusPill" id="combinedPageStatus">CHECKING</span></div><div id="combinedPage" class="systemDetailGrid"></div><article class="chartPanel fullChartPanel"><div class="chartHead"><div><span>COMBINED POWER</span><h3 class="titleWithIcon"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>Total Solar • Site Demand • Utility Grid • Smart Load</span></h3></div></div><canvas id="combinedChart"></canvas></article></div>
     </section>
 
+
+
+    <section id="flow" class="view">
+      <div class="pageShell flowShell">
+        <div class="pageTitle">
+          <div>
+            <div class="eyebrow">LIVE ENERGY FLOW</div>
+            <h2 class="titleWithIcon"><svg class="uiIcon icon-grid" aria-hidden="true"><use href="#i-systems"></use></svg><span>System Mapping & Power Sequence</span></h2>
+            <p>Topology-aware live flow map: PV14000 + PV9000 solar, Tuya physical grid meter, Matrix UPS, battery, smart load and backup load.</p>
+          </div>
+          <div class="flowTopBadges">
+            <span><i class="flowDot solar"></i>Solar <b id="flowSolarBadge">--</b></span>
+            <span><i class="flowDot load"></i>Demand <b id="flowDemandBadge">--</b></span>
+            <span><i class="flowDot grid"></i>Grid <b id="flowGridBadge">--</b></span>
+            <span><i class="flowDot battery"></i>Battery <b id="flowBatteryBadge">--</b></span>
+          </div>
+        </div>
+
+        <article class="energyFlowBoard">
+          <div class="flowBoardHeader">
+            <div>
+              <div class="eyebrow">THREE INVERTERS • ONE POWER BUS</div>
+              <h3>Live topology map</h3>
+              <p>Animated lines show the active direction. Matrix AC input is an internal PV9000 transfer and is not counted as utility-grid import.</p>
+            </div>
+            <div class="flowLegend">
+              <span><i class="legendLine solar"></i>Solar</span>
+              <span><i class="legendLine load"></i>Load</span>
+              <span><i class="legendLine gridImport"></i>Import</span>
+              <span><i class="legendLine gridExport"></i>Export</span>
+              <span><i class="legendLine smart"></i>Smart / UPS</span>
+            </div>
+          </div>
+
+          <div class="flowMap" id="flowMap">
+            <svg class="flowSvg" viewBox="0 0 1200 720" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <filter id="flowSoftGlow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="3" result="blur"></feGaussianBlur>
+                  <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+                </filter>
+              </defs>
+              <path id="flowPv14000Line" class="flowLine flowSolar" d="M250 170 C250 240 420 255 520 320"></path>
+              <path id="flowPv9000Line" class="flowLine flowSolar pv9000Color" d="M750 170 C720 245 615 260 545 320"></path>
+              <path id="flowGridMeterLine" class="flowLine flowGrid" d="M145 360 H260"></path>
+              <path id="flowMeterBusLine" class="flowLine flowGrid" d="M340 360 H485"></path>
+              <path id="flowSiteLoadLine" class="flowLine flowLoad" d="M530 405 V545"></path>
+              <path id="flowPv9000SmartLine" class="flowLine flowSmart" d="M790 120 C930 120 995 175 1040 225"></path>
+              <path id="flowPv9000MatrixLine" class="flowLine flowSmart" d="M750 170 C750 260 780 315 780 365"></path>
+              <path id="flowMatrixBackupLine" class="flowLine flowUps" d="M830 420 C930 420 970 470 1010 500"></path>
+              <path id="flowBatteryLine" class="flowLine flowBattery" d="M780 570 V470"></path>
+            </svg>
+
+            <div class="flowNode nodePv14000" id="flowNodePv14000">
+              <div class="flowNodeIcon icon-pv14000"><svg class="uiIcon"><use href="#i-inverter"></use></svg></div>
+              <span>System 01</span><strong>FRONUS META 10KW</strong><b id="flowPv14000Value">--</b><small id="flowPv14000Sub">PV14000 • 6.78 kWp</small>
+            </div>
+
+            <div class="flowNode nodePv9000" id="flowNodePv9000">
+              <div class="flowNodeIcon icon-pv9000"><svg class="uiIcon"><use href="#i-inverter"></use></svg></div>
+              <span>System 02</span><strong>FRONUS META 6KW</strong><b id="flowPv9000Value">--</b><small id="flowPv9000Sub">PV9000 • feeds UPS + Smart</small>
+            </div>
+
+            <div class="flowNode nodeGrid" id="flowNodeGrid">
+              <div class="flowNodeIcon icon-grid"><svg class="uiIcon"><use href="#i-grid"></use></svg></div>
+              <span>Utility</span><strong>WAPDA / Grid</strong><b id="flowGridValue">--</b><small id="flowGridSub">Physical meter source</small>
+            </div>
+
+            <div class="flowNode nodeMeter" id="flowNodeMeter">
+              <div class="flowNodeIcon icon-meter"><svg class="uiIcon"><use href="#i-meter"></use></svg></div>
+              <span>Physical meter</span><strong>Tuya Smart Life</strong><b id="flowMeterValue">--</b><small id="flowMeterSub">Voltage / current</small>
+            </div>
+
+            <div class="flowNode nodeBus mainBus" id="flowNodeBus">
+              <div class="flowNodeIcon icon-smart"><svg class="uiIcon"><use href="#i-bolt"></use></svg></div>
+              <span>Master bus</span><strong>Total Solar Estate</strong><b id="flowBusValue">--</b><small id="flowBusSub">PV14000 + PV9000</small>
+            </div>
+
+            <div class="flowNode nodeSiteLoad" id="flowNodeSiteLoad">
+              <div class="flowNodeIcon icon-load"><svg class="uiIcon"><use href="#i-load"></use></svg></div>
+              <span>Upstream demand</span><strong>Main site load</strong><b id="flowSiteLoadValue">--</b><small>No UPS double-count</small>
+            </div>
+
+            <div class="flowNode nodeSmartLoad" id="flowNodeSmartLoad">
+              <div class="flowNodeIcon icon-smart"><svg class="uiIcon"><use href="#i-smart"></use></svg></div>
+              <span>Smart output</span><strong>AC / Motor Load</strong><b id="flowSmartValue">--</b><small>Direct from PV9000</small>
+            </div>
+
+            <div class="flowNode nodeMatrix" id="flowNodeMatrix">
+              <div class="flowNodeIcon icon-ups"><svg class="uiIcon"><use href="#i-ups"></use></svg></div>
+              <span>System 03</span><strong>Matrix 6KW UPS</strong><b id="flowMatrixValue">--</b><small id="flowMatrixSub">AC input from PV9000</small>
+            </div>
+
+            <div class="flowNode nodeBackup" id="flowNodeBackup">
+              <div class="flowNodeIcon icon-load"><svg class="uiIcon"><use href="#i-load"></use></svg></div>
+              <span>Backup output</span><strong>UPS Load</strong><b id="flowBackupValue">--</b><small>Matrix protected load</small>
+            </div>
+
+            <div class="flowNode nodeBattery" id="flowNodeBattery">
+              <div class="flowNodeIcon icon-battery"><svg class="uiIcon"><use href="#i-battery"></use></svg></div>
+              <span>UPS storage</span><strong>Battery Bank</strong><b id="flowBatteryValue">--</b><small id="flowBatterySub">SOC / power</small>
+            </div>
+
+            <div class="flowLabel labelPv14000"><span>PV14000 → Bus</span><b id="flowPv14000LineText">--</b></div>
+            <div class="flowLabel labelPv9000"><span>PV9000 → Bus</span><b id="flowPv9000LineText">--</b></div>
+            <div class="flowLabel labelGrid"><span id="flowGridLineTitle">Grid ↔ Site</span><b id="flowGridLineText">--</b></div>
+            <div class="flowLabel labelSmart"><span>PV9000 → Smart</span><b id="flowSmartLineText">--</b></div>
+            <div class="flowLabel labelUpsIn"><span>PV9000 → Matrix</span><b id="flowUpsInLineText">--</b></div>
+            <div class="flowLabel labelUpsOut"><span>Matrix → Backup</span><b id="flowUpsOutLineText">--</b></div>
+            <div class="flowLabel labelBattery"><span id="flowBatteryLineTitle">Battery ↔ Matrix</span><b id="flowBatteryLineText">--</b></div>
+          </div>
+
+          <div class="flowSequencePanel">
+            <div class="flowSequenceStep active"><b>01</b><span>Solar generation</span><strong id="flowSeqSolar">PV14000 + PV9000 → Master Bus</strong></div>
+            <div class="flowSequenceStep"><b>02</b><span>Utility exchange</span><strong id="flowSeqGrid">Tuya meter confirms import/export</strong></div>
+            <div class="flowSequenceStep"><b>03</b><span>PV9000 distribution</span><strong id="flowSeqPv9000">PV9000 feeds Smart Load and Matrix AC input</strong></div>
+            <div class="flowSequenceStep"><b>04</b><span>UPS protection</span><strong id="flowSeqUps">Matrix supports backup load and battery</strong></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <section id="charts" class="view">
       <div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">ONLINE HISTORICAL TELEMETRY</div><h2 class="titleWithIcon"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>Professional Performance Charts</span></h2><p>PostgreSQL-backed history for both solar inverters, the UPS and the combined estate.</p></div><div class="rangeButtons"><button data-hours="1">1H</button><button data-hours="6">6H</button><button class="active" data-hours="24">24H</button><button data-hours="168">7D</button><button data-hours="720">30D</button></div></div><article class="chartPanel fullChartPanel tall"><div class="chartHead"><div><span>MASTER POWER</span><h3 class="titleWithIcon"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>Solar • Site Demand • Utility Grid • Smart Load</span></h3></div></div><canvas id="fullChart"></canvas></article><div class="threeCharts"><article class="chartPanel"><div class="chartHead"><div><span>SYSTEM 01</span><h3 class="titleWithIcon"><svg class="uiIcon icon-pv14000" aria-hidden="true"><use href="#i-chart"></use></svg><span>PV14000 history</span></h3></div></div><canvas id="fullPv14000Chart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>SYSTEM 02</span><h3 class="titleWithIcon"><svg class="uiIcon icon-pv9000" aria-hidden="true"><use href="#i-chart"></use></svg><span>PV9000 history</span></h3></div></div><canvas id="fullPv9000Chart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>SYSTEM 03</span><h3 class="titleWithIcon"><svg class="uiIcon icon-ups" aria-hidden="true"><use href="#i-chart"></use></svg><span>Matrix UPS history</span></h3></div></div><canvas id="fullMatrixChart"></canvas></article></div></div>
     </section>
@@ -216,6 +339,6 @@
     </section>
   </main>
 
-  <script src="dashboard.js?v=22"></script>
+  <script src="dashboard.js?v=24"></script>
 </body>
 </html>
