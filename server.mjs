@@ -245,6 +245,119 @@ function normalizeMatrixUps(payload) {
   };
 }
 
+function normalizeTuyaDirectionText(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (!text) return null;
+
+  // Smart Life / Tuya wording observed on this meter:
+  // Consumption = utility grid import, Generate = utility grid export.
+  const importValues = new Set([
+    "consumption", "consume", "consuming", "import", "importing",
+    "grid_import", "from_grid", "buy", "buying"
+  ]);
+  const exportValues = new Set([
+    "generate", "generating", "generation", "export", "exporting",
+    "grid_export", "to_grid", "feed_in", "feedin", "selling"
+  ]);
+
+  if (importValues.has(text)) return "IMPORTING";
+  if (exportValues.has(text)) return "EXPORTING";
+  return null;
+}
+
+function detectTuyaExplicitDirection(s) {
+  // Prefer a dedicated normalized field if the Tuya dashboard ever exposes one.
+  const topLevelKeys = [
+    "direction", "gridDirection", "powerDirection", "flowDirection",
+    "flow", "mode", "status", "workState", "workingState"
+  ];
+  for (const key of topLevelKeys) {
+    if (!Object.prototype.hasOwnProperty.call(s, key)) continue;
+    const mode = normalizeTuyaDirectionText(s[key]);
+    if (mode) return { mode, source: `tuya-field:${key}`, rawValue: String(s[key]) };
+  }
+
+  // /api/meter already returns the Tuya shadow properties as `raw`.
+  // Scan PROPERTY VALUES only. Never infer direction from codes such as
+  // reverse_energy_total because those codes are always present.
+  const raw = Array.isArray(s.raw) ? s.raw : [];
+  const directionCodes = new Set([
+    "direction", "power_direction", "grid_direction", "flow_direction",
+    "power_flow", "energy_flow", "work_direction"
+  ]);
+
+  for (const prop of raw) {
+    if (!prop || typeof prop !== "object") continue;
+    const code = String(prop.code || "").trim().toLowerCase();
+    const mode = normalizeTuyaDirectionText(prop.value);
+    if (mode) return {
+      mode,
+      source: `tuya-raw:${code || "unknown"}`,
+      rawValue: String(prop.value)
+    };
+
+    // Forward/reverse are only trusted on a DP explicitly describing direction.
+    if (directionCodes.has(code)) {
+      const value = String(prop.value ?? "").trim().toLowerCase();
+      if (value === "forward") return { mode: "IMPORTING", source: `tuya-raw:${code}`, rawValue: String(prop.value) };
+      if (value === "reverse") return { mode: "EXPORTING", source: `tuya-raw:${code}`, rawValue: String(prop.value) };
+    }
+  }
+
+  // Some bidirectional Tuya meters expose a signed total active-power DP even
+  // though phase_a itself contains an unsigned magnitude. A negative signed
+  // total is definitive export; positive is intentionally not assumed to be
+  // import unless another direction signal confirms it.
+  for (const prop of raw) {
+    if (!prop || typeof prop !== "object") continue;
+    const code = String(prop.code || "").trim().toLowerCase();
+    if (!["power_total", "active_power", "active_power_total", "cur_power"].includes(code)) continue;
+    const value = Number(prop.value);
+    if (Number.isFinite(value) && value < -30) {
+      return { mode: "EXPORTING", source: `tuya-signed-power:${code}`, rawValue: String(prop.value) };
+    }
+  }
+
+  return null;
+}
+
+function tuyaPropertyTimestamp(prop) {
+  if (!prop || typeof prop !== "object") return null;
+  const candidates = [
+    prop.time, prop.timestamp, prop.update_time, prop.updateTime,
+    prop.last_update_time, prop.lastUpdateTime, prop.event_time, prop.eventTime
+  ];
+  for (const value of candidates) {
+    if (value === null || value === undefined || value === "") continue;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      // Tuya timestamps may be in seconds or milliseconds.
+      return numeric < 100000000000 ? numeric * 1000 : numeric;
+    }
+    const parsed = Date.parse(String(value));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function detectTuyaCounterTimestampDirection(s) {
+  const raw = Array.isArray(s.raw) ? s.raw : [];
+  const forward = raw.find((p) => String(p?.code || "") === "total_forward_energy");
+  const reverse = raw.find((p) => String(p?.code || "") === "reverse_energy_total");
+  const forwardAt = tuyaPropertyTimestamp(forward);
+  const reverseAt = tuyaPropertyTimestamp(reverse);
+  if (!Number.isFinite(forwardAt) || !Number.isFinite(reverseAt)) return null;
+
+  // Only use the timestamp hint when one counter is meaningfully newer.
+  // Similar timestamps can mean the whole shadow snapshot refreshed together.
+  const gap = Math.abs(forwardAt - reverseAt);
+  if (gap < 1500) return null;
+  return forwardAt > reverseAt
+    ? { mode: "IMPORTING", source: "tuya-counter-update-time" }
+    : { mode: "EXPORTING", source: "tuya-counter-update-time" };
+}
+
 function normalizeTuyaMeter(payload) {
   const s = payload && typeof payload === "object" ? payload : {};
   const asNullableNumber = (v) => {
@@ -258,22 +371,63 @@ function normalizeTuyaMeter(payload) {
   const now = Date.now();
   const eps = 0.000001;
   let detected = "";
+  let directionSource = "";
+  let tuyaAppStatus = null;
 
-  if (tuyaDirectionState.importKwh != null && tuyaDirectionState.exportKwh != null && importKwh != null && exportKwh != null) {
+  // Highest priority: the meter/app's own direction enum.
+  // On this device: Consumption = IMPORT, Generate = EXPORT.
+  const explicit = detectTuyaExplicitDirection(s);
+  if (explicit) {
+    detected = explicit.mode;
+    directionSource = explicit.source;
+    tuyaAppStatus = explicit.rawValue || null;
+  }
+
+  // Second priority: observe which cumulative energy counter actually increased.
+  if (!detected && tuyaDirectionState.importKwh != null && tuyaDirectionState.exportKwh != null && importKwh != null && exportKwh != null) {
     const di = importKwh - tuyaDirectionState.importKwh;
     const de = exportKwh - tuyaDirectionState.exportKwh;
     if (di >= -eps && de >= -eps) {
-      if (de > di + eps && de > eps) detected = "EXPORTING";
-      else if (di > de + eps && di > eps) detected = "IMPORTING";
+      if (de > di + eps && de > eps) {
+        detected = "EXPORTING";
+        directionSource = "cumulative-export-counter-delta";
+      } else if (di > de + eps && di > eps) {
+        detected = "IMPORTING";
+        directionSource = "cumulative-import-counter-delta";
+      }
     }
   }
 
-  if (powerW < 30) detected = "IDLE";
+  // Third priority: Tuya shadow-property update time. This helps immediately
+  // after a Master Dashboard restart, before we have two local counter samples.
+  if (!detected && powerW >= 30) {
+    const timestampHint = detectTuyaCounterTimestampDirection(s);
+    if (timestampHint) {
+      detected = timestampHint.mode;
+      directionSource = timestampHint.source;
+    }
+  }
+
+  if (powerW < 30) {
+    detected = "IDLE";
+    directionSource = "low-live-power";
+  }
+
+  // Keep a recently confirmed direction briefly when counters have not moved.
   if (!detected && powerW >= 30) {
     const recentDirection = ["IMPORTING", "EXPORTING"].includes(tuyaDirectionState.mode) && now - tuyaDirectionState.lastDirectionAt < 15 * 60 * 1000;
-    detected = recentDirection ? tuyaDirectionState.mode : "IMPORTING";
+    if (recentDirection) {
+      detected = tuyaDirectionState.mode;
+      directionSource = "recent-confirmed-direction";
+    }
   }
-  if (!detected) detected = "IDLE";
+
+  // Do not blindly call positive/absolute Tuya power IMPORTING. The Tuya phase
+  // payload is unsigned on this meter. Unknown is safer than a reversed gauge.
+  if (!detected) {
+    detected = powerW >= 30 ? "UNKNOWN" : "IDLE";
+    directionSource = powerW >= 30 ? "awaiting-tuya-direction" : "low-live-power";
+  }
 
   if (["IMPORTING", "EXPORTING"].includes(detected)) tuyaDirectionState.lastDirectionAt = now;
   if (importKwh != null) tuyaDirectionState.importKwh = importKwh;
@@ -299,7 +453,8 @@ function normalizeTuyaMeter(payload) {
     exportKwh,
     netKwh: asNullableNumber(s.netKwh),
     updatedAt: Number.isFinite(parsedUpdated) ? parsedUpdated : now,
-    directionSource: "cumulative-counter-delta + live active power"
+    directionSource,
+    tuyaAppStatus
   };
 }
 

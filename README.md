@@ -1,8 +1,8 @@
-# Raja Fraz Master Dashboard - V19
+# Raja Fraz Master Dashboard - V20
 
-V19 keeps the V18 live MDI percentages and Today totals, and is paired with Tuya V11 for reliable Month selection and This Month Import/Export.
+V20 keeps the V19 Tuya monthly-history fixes and corrects live Tuya grid direction. Smart Life/Tuya **Consumption = Import** and **Generate = Export** whenever that status is present in the raw Tuya meter response.
 
-Deploy Tuya V11 first, wait for Render to become Live, then deploy this Master V19 package.
+Deploy with the existing Tuya V11 service, then deploy this Master V20 package.
 
 # Raja Fraz Master Dashboard V17 — Tuya Live MDI Percentages
 
@@ -80,7 +80,7 @@ The Dashboard now includes a separate **TUYA REAL-TIME GRID IMPORT / EXPORT** pa
 - Import gauge: **red**
 - Export gauge: **green**
 - Live gauge power comes from the Tuya meter active-power reading.
-- Direction is inferred using the same V8 approach: changes in cumulative import/export counters plus live power, because this meter does not expose a signed instantaneous direction DP.
+- Live direction now prioritizes the Tuya/Smart Life status when exposed in the raw meter response: **Consumption = Import** and **Generate = Export**. It then falls back to cumulative-counter changes and safe timestamp/recent-direction hints. Unsigned live watts are no longer blindly assumed to be Import.
 - Grid voltage, current, power factor and meter temperature are also shown.
 
 Default service:
@@ -147,3 +147,11 @@ The physical Tuya grid gauges now display live utilization against the approved 
 - Today's Tuya import/export cards now use `/api/energy-stats`, the same endpoint used by the standalone Tuya dashboard.
 - Month totals are loaded independently from `/api/energy-range`, so a month-history problem no longer blanks the Today cards.
 - Day/month selected-period results remain available and synchronize the matching quick-total cards.
+
+## V20 Tuya live direction fix
+
+- Smart Life/Tuya direction wording is now authoritative when it is present in `/api/meter` raw shadow properties: **Consumption = Grid Import** and **Generate = Grid Export**.
+- The Master Dashboard scans raw Tuya property *values* for that status and never mistakes always-present DP names such as `reverse_energy_total` for live export.
+- Fallback order is: explicit Tuya status → cumulative counter delta → counter update timestamp → recently confirmed direction.
+- The old unsafe first-sample fallback that assumed all unsigned live power was IMPORTING has been removed. If direction cannot yet be proven, the live status shows `UNKNOWN` instead of putting the watts on the wrong gauge.
+- Daily/monthly energy mapping is unchanged: forward energy remains Import and reverse energy remains Export.
