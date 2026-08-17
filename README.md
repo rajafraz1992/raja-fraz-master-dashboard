@@ -161,3 +161,10 @@ The physical Tuya grid gauges now display live utilization against the approved 
 - Fallback order is: explicit Tuya status → cumulative counter delta → counter update timestamp → recently confirmed direction.
 - The old unsafe first-sample fallback that assumed all unsigned live power was IMPORTING has been removed. If direction cannot yet be proven, the live status shows `UNKNOWN` instead of putting the watts on the wrong gauge.
 - Daily/monthly energy mapping is unchanged: forward energy remains Import and reverse energy remains Export.
+
+
+## V22 - Professional energy icons
+- Added embedded SVG icons across navigation, inverter panels, gauges, Tuya physical meter, UPS, charts, totals, health and dynamic detail cards.
+- Solar, grid, battery, load, Smart Load, import/export, temperature and UPS use semantic icon accents.
+- Icons are embedded in the dashboard itself; no external icon CDN or extra Render setting is required.
+- V21 Render auto-wake and V20 Tuya direction fixes are preserved.

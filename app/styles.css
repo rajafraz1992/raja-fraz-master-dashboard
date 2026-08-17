@@ -24,3 +24,34 @@ main{padding-bottom:30px}.view{display:none;padding:14px 16px 24px;max-width:190
 
 @media(max-width:1100px){.tuyaQuickTotals{grid-template-columns:1fr 1fr}.tuyaEnergyCard:nth-child(2){border-right:0}.tuyaEnergyCard:nth-child(-n+2){border-bottom:1px solid var(--line)}.tuyaSelectedPeriod{grid-template-columns:1fr 1fr}.selectedPeriodTitle{grid-column:1/-1;border-right:0;border-bottom:1px solid var(--line)}.tuyaSelectedPeriod .selectedPeriodMetric:nth-of-type(3){border-right:0}}
 @media(max-width:700px){.tuyaTotalsHead{align-items:flex-start;flex-direction:column}.tuyaSelector{justify-content:flex-start}.tuyaQuickTotals{grid-template-columns:1fr 1fr}.tuyaEnergyCard b{font-size:18px}.tuyaSelectedPeriod{grid-template-columns:1fr}.selectedPeriodTitle,.selectedPeriodMetric{grid-column:auto;border-right:0;border-bottom:1px solid var(--line)}.tuyaSelectedPeriod>div:last-child{border-bottom:0}}
+
+
+/* =========================================================
+   V22 PROFESSIONAL ENERGY ICON SYSTEM
+   Embedded SVG sprite: no CDN / external icon dependency.
+   ========================================================= */
+.iconSprite{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+.uiIcon{width:16px;height:16px;display:inline-block;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px}
+.iconLabel,.titleWithIcon,.metricTitle,.iconInline{display:flex!important;align-items:center;gap:7px}
+.titleWithIcon>span,.metricTitle>span,.iconLabel>span{min-width:0}
+.navtab{display:flex;align-items:center;gap:7px}.navtab .uiIcon{width:15px;height:15px}
+.masterBrand .uiIcon{width:18px;height:18px}.masterBrand>span{color:var(--text)}
+.statusChip.iconInline .uiIcon{width:14px;height:14px}
+.panelHead strong.titleWithIcon{display:flex;align-items:center;gap:6px}.panelHead strong .uiIcon{width:15px;height:15px}
+.heroMetric>.iconLabel{font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:0}.heroMetric>.iconLabel .uiIcon{width:15px;height:15px}
+.gaugeCard h3.metricTitle,.upsGauge h3.metricTitle,.tuyaGauge h3.metricTitle{align-items:center;gap:7px}.gaugeCard h3.metricTitle .uiIcon,.upsGauge h3.metricTitle .uiIcon{width:17px;height:17px}.tuyaGauge h3.metricTitle .uiIcon{width:18px;height:18px}
+.tuyaGauge h3.metricTitle>span{display:inline-flex;align-items:baseline;gap:4px;flex-wrap:wrap}
+.tuyaHeader h3.titleWithIcon .uiIcon,.upsHeader h3.titleWithIcon .uiIcon{width:20px;height:20px}
+.upsUseBadge{font-style:normal;font-size:10px!important;color:#fff!important;background:var(--teal)!important;padding:4px 7px!important;border-radius:999px!important;vertical-align:middle;margin-left:4px}
+.tuyaStats .iconLabel,.upsStats .iconLabel{font-size:9px;text-transform:uppercase;color:#7893a5;gap:6px}.tuyaStats .iconLabel .uiIcon,.upsStats .iconLabel .uiIcon{width:14px;height:14px}
+.tuyaEnergyCard>.iconLabel,.selectedPeriodMetric>.iconLabel{font-size:9px;text-transform:uppercase;gap:6px}.tuyaEnergyCard>.iconLabel .uiIcon,.selectedPeriodMetric>.iconLabel .uiIcon{width:14px;height:14px}
+.chartHead h3.titleWithIcon{display:flex;align-items:center;gap:7px}.chartHead h3.titleWithIcon .uiIcon{width:16px;height:16px}
+.summaryCard>.iconLabel,.totalCard>.iconLabel{font-size:8px;text-transform:uppercase;color:#7893a5;letter-spacing:.08em;font-weight:900;gap:6px}.summaryCard>.iconLabel .uiIcon,.totalCard>.iconLabel .uiIcon{width:15px;height:15px}
+.detailCard>.detailLabel{font-size:8px;color:#7893a5;text-transform:uppercase;gap:6px}.detailCard>.detailLabel .uiIcon{width:15px;height:15px}
+.healthLabel{display:flex!important;align-items:center;gap:6px;color:#6d8798}.healthLabel .uiIcon{width:14px;height:14px}
+.healthCard h3.titleWithIcon .uiIcon,.pageTitle h2.titleWithIcon .uiIcon{width:19px;height:19px}
+.sectionIntro h2.titleWithIcon .uiIcon{width:20px;height:20px}
+.valuePanel>.iconLabel{font-size:9px;color:#7893a5;letter-spacing:.12em;font-weight:900}.valuePanel>.iconLabel .uiIcon{width:16px;height:16px}
+.topologyCard h3.titleWithIcon .uiIcon{width:18px;height:18px}
+.icon-solar{color:#e8a400!important}.icon-load{color:var(--blue)!important}.icon-grid{color:#587789!important}.icon-battery{color:var(--green)!important}.icon-smart{color:var(--orange)!important}.icon-ups{color:var(--teal)!important}.icon-meter{color:var(--navy)!important}.icon-import{color:var(--red)!important}.icon-export{color:var(--green)!important}.icon-temp{color:#e16b55!important}.icon-current{color:#6a63d9!important}.icon-health{color:var(--green)!important}.icon-pv14000{color:var(--blue)!important}.icon-pv9000{color:var(--purple)!important}.icon-neutral{color:#587789!important}
+@media(max-width:700px){.navtab .uiIcon{width:14px;height:14px}.metricTitle{gap:5px}.gaugeCard h3.metricTitle .uiIcon{width:15px;height:15px}}

@@ -13,6 +13,23 @@ let tuyaRangeMode = 'day';
 let tuyaQuickLoaded = false;
 
 function set(id, value) { const el = $(id); if (el) el.textContent = value; }
+function uiIcon(name, cls='') { return `<svg class="uiIcon ${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`; }
+function iconMetaForLabel(label='') {
+  const s=String(label).toLowerCase();
+  if(s.includes('solar') || s==='pv1' || s==='pv2' || s.includes('pv installed') || s.includes('pv capacity')) return ['sun','icon-solar'];
+  if(s.includes('import')) return ['import','icon-import'];
+  if(s.includes('export')) return ['export','icon-export'];
+  if(s.includes('grid') || s.includes('voltage')) return ['grid','icon-grid'];
+  if(s.includes('battery')) return ['battery','icon-battery'];
+  if(s.includes('smart load')) return ['smart','icon-smart'];
+  if(s.includes('temperature') || s.includes('transformer')) return ['temp','icon-temp'];
+  if(s.includes('ups') || s.includes('ac input') || s.includes('role')) return ['ups','icon-ups'];
+  if(s.includes('load') || s.includes('output')) return ['load','icon-load'];
+  if(s.includes('connection') || s.includes('system') || s.includes('overall') || s.includes('health')) return ['health','icon-health'];
+  if(s.includes('current')) return ['current','icon-current'];
+  return ['meter','icon-neutral'];
+}
+function iconLabelHtml(label) { const [name,cls]=iconMetaForLabel(label); return `<span class="detailLabel iconLabel ${cls}">${uiIcon(name,cls)}<span>${label}</span></span>`; }
 function finite(v, f=0) { const n = Number(v); return Number.isFinite(n) ? n : f; }
 function fmtPower(v) { const n=finite(v); const a=Math.abs(n); return a>=1000?`${(a/1000).toFixed(2)} kW`:`${Math.round(a)} W`; }
 function fmtSignedPower(v) { const n=finite(v); const sign=n<0?'−':''; const a=Math.abs(n); return a>=1000?`${sign}${(a/1000).toFixed(2)} kW`:`${sign}${Math.round(a)} W`; }
@@ -284,7 +301,7 @@ function renderQuickTotals(c){
   set('todaySolar',fmtKwh(c.todaySolar)); set('todayLoad',fmtKwh(c.todayLoad)); set('todayImport',fmtKwh(c.todayImport)); set('todayExport',fmtKwh(c.todayExport));
   if(energy)renderEnergy();
 }
-function metricCards(rows){return rows.map(([label,value,small,cls=''])=>`<div class="detailCard ${cls}"><span>${label}</span><b>${value}</b><small>${small||''}</small></div>`).join('');}
+function metricCards(rows){return rows.map(([label,value,small,cls=''])=>`<div class="detailCard ${cls}">${iconLabelHtml(label)}<b>${value}</b><small>${small||''}</small></div>`).join('');}
 function renderDetailPages(a,b,u,c){
   $('pv14000Page').innerHTML=metricCards(a?[
     ['Solar PV',fmtPower(a.solarW),'6.78 kWp installed'],['AC output / load',fmtPower(a.loadW),'10 kW capacity'],['Utility grid',fmtPower(a.gridW),gridMode(a.gridW)],['Grid voltage',`${finite(a.gridV).toFixed(1)} V`,`${finite(a.gridHz).toFixed(2)} Hz`],
@@ -306,7 +323,7 @@ function renderDetailPages(a,b,u,c){
     ['Smart Load',fmtPower(c.smartLoadW),'Direct from PV9000'],['UPS load',fmtPower(c.upsLoadW),'Informational • excluded from double-count'],['UPS AC input',fmtPower(c.upsAcInputW),'Internal PV9000 → Matrix transfer'],['Connected systems',`${finite(c.connectedSystems)}/3`,c.health]
   ]);
 }
-function healthRows(rows){return rows.map(([k,v,ok])=>`<div class="healthRow"><span>${k}</span><b class="${ok===false?'badText':'okText'}">${v}</b></div>`).join('');}
+function healthRows(rows){return rows.map(([k,v,ok])=>{const [name,cls]=iconMetaForLabel(k);return `<div class="healthRow"><span class="healthLabel iconLabel ${cls}">${uiIcon(name,cls)}<span>${k}</span></span><b class="${ok===false?'badText':'okText'}">${v}</b></div>`}).join('');}
 function renderHealth(a,b,u,c,m,errors){
   $('pv14000Health').innerHTML=healthRows([['API connection',a?'ONLINE':'OFFLINE',Boolean(a)],['Last update',a?ageText(a.updatedAt):'--',Boolean(a)],['PV capacity','6.78 kWp',true],['AC capacity','10 kW',true]]);
   $('pv9000Health').innerHTML=healthRows([['API connection',b?'ONLINE':'OFFLINE',Boolean(b)],['Last update',b?ageText(b.updatedAt):'--',Boolean(b)],['PV capacity','4.36 kWp',true],['Feeds','UPS + Smart Load',Boolean(b)]]);
