@@ -32,6 +32,24 @@ services:
         value: "false"
       - key: ELECTRICITY_RATE_PKR
         value: 60
+      - key: EXPORT_RATE_PKR
+        value: 0
+      - key: NIGHT_IMPORT_LIMIT_W
+        value: 5000
+      - key: DAY_EXPORT_LIMIT_W
+        value: 6000
+      - key: DAY_MODE_START
+        value: "07:30"
+      - key: DAY_MODE_END
+        value: "17:00"
+      - key: BATTERY_CAPACITY_KWH
+        value: 0
+      - key: TARGET_DAILY_YIELD_KWH_PER_KWP
+        value: 0
+      - key: RECONCILIATION_ALERT_W
+        value: 500
+      - key: ALERT_TEMP_C
+        value: 65
       - key: HISTORY_SAMPLE_SECONDS
         value: 60
       - key: DATABASE_URL

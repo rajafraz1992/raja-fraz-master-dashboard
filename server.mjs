@@ -43,6 +43,15 @@ const TUYA_API_BASE = String(
 ).replace(/\/$/, "");
 
 const RATE = Number(process.env.ELECTRICITY_RATE_PKR || 60);
+const EXPORT_RATE = Math.max(0, Number(process.env.EXPORT_RATE_PKR || 0));
+const NIGHT_IMPORT_LIMIT_W = Math.max(100, Number(process.env.NIGHT_IMPORT_LIMIT_W || 5000));
+const DAY_EXPORT_LIMIT_W = Math.max(100, Number(process.env.DAY_EXPORT_LIMIT_W || 6000));
+const DAY_MODE_START = String(process.env.DAY_MODE_START || "07:30").trim();
+const DAY_MODE_END = String(process.env.DAY_MODE_END || "17:00").trim();
+const BATTERY_CAPACITY_KWH = Math.max(0, Number(process.env.BATTERY_CAPACITY_KWH || 0));
+const TARGET_DAILY_YIELD_KWH_PER_KWP = Math.max(0, Number(process.env.TARGET_DAILY_YIELD_KWH_PER_KWP || 0));
+const RECONCILIATION_ALERT_W = Math.max(100, Number(process.env.RECONCILIATION_ALERT_W || 500));
+const ALERT_TEMP_C = Math.max(30, Number(process.env.ALERT_TEMP_C || 65));
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const HISTORY_SAMPLE_SECONDS = Math.max(30, Number(process.env.HISTORY_SAMPLE_SECONDS || 60));
 
@@ -109,6 +118,25 @@ function direction(gridW) {
   if (Math.abs(num(gridW)) < 30) return "IDLE";
   return num(gridW) >= 0 ? "IMPORTING" : "EXPORTING";
 }
+function parseClockMinutes(value, fallback) {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return fallback;
+  const h = Math.max(0, Math.min(23, Number(match[1])));
+  const m = Math.max(0, Math.min(59, Number(match[2])));
+  return h * 60 + m;
+}
+function pakistanClock(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Karachi", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"
+  }).formatToParts(date);
+  const out = {};
+  for (const part of parts) if (part.type !== "literal") out[part.type] = Number(part.value);
+  const minutes = num(out.hour) * 60 + num(out.minute);
+  const start = parseClockMinutes(DAY_MODE_START, 7 * 60 + 30);
+  const end = parseClockMinutes(DAY_MODE_END, 17 * 60);
+  const dayMode = start <= end ? minutes >= start && minutes < end : minutes >= start || minutes < end;
+  return { minutes, dayMode, label: dayMode ? "DAY EXPORT WATCH" : "NIGHT IMPORT WATCH" };
+}
 function authHeader(user, password) {
   if (!password) return null;
   return `Basic ${Buffer.from(`${user}:${password}`, "utf8").toString("base64")}`;
@@ -119,7 +147,7 @@ async function getJson(url, { timeoutMs = 16000, headers = {} } = {}) {
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { "User-Agent": "Raja-Fraz-Master/5.3", ...headers }
+      headers: { "User-Agent": "Raja-Fraz-Master/6.0", ...headers }
     });
     const text = await response.text();
     let data;
@@ -698,8 +726,26 @@ async function initDb() {
         combined_demand_w DOUBLE PRECISION NOT NULL DEFAULT 0,
         combined_grid_w DOUBLE PRECISION NOT NULL DEFAULT 0,
         combined_smart_w DOUBLE PRECISION NOT NULL DEFAULT 0,
-        combined_ups_load_w DOUBLE PRECISION NOT NULL DEFAULT 0
+        combined_ups_load_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        meter_online BOOLEAN NOT NULL DEFAULT FALSE,
+        meter_mode TEXT NOT NULL DEFAULT 'IDLE',
+        meter_power_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        meter_import_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        meter_export_w DOUBLE PRECISION NOT NULL DEFAULT 0,
+        meter_voltage_v DOUBLE PRECISION,
+        meter_current_a DOUBLE PRECISION,
+        meter_pf DOUBLE PRECISION,
+        meter_temp_c DOUBLE PRECISION
       );
+      ALTER TABLE master_samples_v3 ADD COLUMN IF NOT EXISTS meter_online BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE master_samples_v3 ADD COLUMN IF NOT EXISTS meter_mode TEXT NOT NULL DEFAULT 'IDLE';
+      ALTER TABLE master_samples_v3 ADD COLUMN IF NOT EXISTS meter_power_w DOUBLE PRECISION NOT NULL DEFAULT 0;
+      ALTER TABLE master_samples_v3 ADD COLUMN IF NOT EXISTS meter_import_w DOUBLE PRECISION NOT NULL DEFAULT 0;
+      ALTER TABLE master_samples_v3 ADD COLUMN IF NOT EXISTS meter_export_w DOUBLE PRECISION NOT NULL DEFAULT 0;
+      ALTER TABLE master_samples_v3 ADD COLUMN IF NOT EXISTS meter_voltage_v DOUBLE PRECISION;
+      ALTER TABLE master_samples_v3 ADD COLUMN IF NOT EXISTS meter_current_a DOUBLE PRECISION;
+      ALTER TABLE master_samples_v3 ADD COLUMN IF NOT EXISTS meter_pf DOUBLE PRECISION;
+      ALTER TABLE master_samples_v3 ADD COLUMN IF NOT EXISTS meter_temp_c DOUBLE PRECISION;
       CREATE INDEX IF NOT EXISTS master_samples_v3_captured_at_idx ON master_samples_v3 (captured_at DESC);
     `);
     dbReady = true;
@@ -719,6 +765,7 @@ async function storeSample(live, force = false) {
   const b = live.systems.pv9000 || {};
   const u = live.systems.matrix || {};
   const c = live.systems.combined || {};
+  const m = live.meter || {};
   try {
     await pool.query(`
       INSERT INTO master_samples_v3 (
@@ -726,20 +773,25 @@ async function storeSample(live, force = false) {
         pv14000_solar_w, pv14000_load_w, pv14000_grid_w, pv14000_pv1_w, pv14000_pv2_w, pv14000_temp_c,
         pv9000_solar_w, pv9000_load_w, pv9000_grid_w, pv9000_pv1_w, pv9000_pv2_w, pv9000_smart_w, pv9000_temp_c,
         matrix_ac_input_w, matrix_load_w, matrix_battery_w, matrix_battery_pct, matrix_temp_c,
-        combined_solar_w, combined_demand_w, combined_grid_w, combined_smart_w, combined_ups_load_w
+        combined_solar_w, combined_demand_w, combined_grid_w, combined_smart_w, combined_ups_load_w,
+        meter_online, meter_mode, meter_power_w, meter_import_w, meter_export_w, meter_voltage_v, meter_current_a, meter_pf, meter_temp_c
       ) VALUES (
         NOW(), $1, $2, $3,
         $4, $5, $6, $7, $8, $9,
         $10, $11, $12, $13, $14, $15, $16,
         $17, $18, $19, $20, $21,
-        $22, $23, $24, $25, $26
+        $22, $23, $24, $25, $26,
+        $27, $28, $29, $30, $31, $32, $33, $34, $35
       )
     `, [
       Boolean(live.systems.pv14000), Boolean(live.systems.pv9000), Boolean(live.systems.matrix),
       num(a.solarW), num(a.loadW), num(a.gridW), num(a.pv1W), num(a.pv2W), num(a.temp),
       num(b.solarW), num(b.loadW), num(b.gridW), num(b.pv1W), num(b.pv2W), num(b.smartLoadW), num(b.temp),
       num(u.acInputW), num(u.loadW), num(u.batteryW), u.batteryPct == null ? null : num(u.batteryPct), num(u.transformer || u.temp),
-      num(c.solarW), num(c.siteDemandW), num(c.gridW), num(c.smartLoadW), num(c.upsLoadW)
+      num(c.solarW), num(c.siteDemandW), num(c.gridW), num(c.smartLoadW), num(c.upsLoadW),
+      Boolean(m.online), String(m.mode || "IDLE"), num(m.powerW), num(m.importW), num(m.exportW),
+      m.voltage == null ? null : num(m.voltage), m.currentA == null ? null : num(m.currentA),
+      m.powerFactor == null ? null : num(m.powerFactor), m.temperatureC == null ? null : num(m.temperatureC)
     ]);
     lastStoredAt = now;
     return true;
@@ -795,7 +847,14 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
       pv9000AcW: PV9000_AC_CAPACITY_W,
       matrixPvW: 0,
       matrixAcW: MATRIX_AC_CAPACITY_W,
-      totalPvW: TOTAL_PV_INSTALLED_W
+      totalPvW: TOTAL_PV_INSTALLED_W,
+      batteryKwh: BATTERY_CAPACITY_KWH || null
+    },
+    guardrails: {
+      nightImportLimitW: NIGHT_IMPORT_LIMIT_W, dayExportLimitW: DAY_EXPORT_LIMIT_W,
+      dayModeStart: DAY_MODE_START, dayModeEnd: DAY_MODE_END, exportRatePkr: EXPORT_RATE,
+      targetDailyYieldKwhPerKwp: TARGET_DAILY_YIELD_KWH_PER_KWP || null,
+      reconciliationAlertW: RECONCILIATION_ALERT_W, alertTempC: ALERT_TEMP_C
     },
     topology: systems.combined.topology,
     history: {
@@ -869,7 +928,13 @@ async function dbHistory(hours) {
     const combined = rows.map((r) => ({
       timestamp: new Date(r.captured_at).getTime(),
       solarW: num(r.combined_solar_w), loadW: num(r.combined_demand_w), gridW: num(r.combined_grid_w),
-      smartLoadW: num(r.combined_smart_w), upsLoadW: num(r.combined_ups_load_w)
+      smartLoadW: num(r.combined_smart_w), upsLoadW: num(r.combined_ups_load_w),
+      meterOnline: Boolean(r.meter_online), meterMode: String(r.meter_mode || "IDLE"), meterPowerW: num(r.meter_power_w),
+      meterImportW: num(r.meter_import_w), meterExportW: num(r.meter_export_w),
+      meterVoltageV: r.meter_voltage_v == null ? null : num(r.meter_voltage_v),
+      meterCurrentA: r.meter_current_a == null ? null : num(r.meter_current_a),
+      meterPf: r.meter_pf == null ? null : num(r.meter_pf), meterTempC: r.meter_temp_c == null ? null : num(r.meter_temp_c),
+      batteryW: num(r.matrix_battery_w), batteryPct: r.matrix_battery_pct == null ? null : num(r.matrix_battery_pct)
     }));
     return { ok: true, pv14000, pv9000, matrix, combined, storage: "postgres", samples: rows.length, sampleSeconds: HISTORY_SAMPLE_SECONDS };
   } catch (error) {
@@ -935,6 +1000,131 @@ async function fetchTuyaEnergyRange(params) {
   return getJson(`${TUYA_API_BASE}/api/energy-range?${qs.toString()}`, { timeoutMs: type === "month" ? 30000 : 20000 });
 }
 
+async function analyticsFromDb() {
+  const empty = {
+    online: false, todaySamples: 0,
+    todayImportPeakW: 0, todayExportPeakW: 0, monthImportPeakW: 0, monthExportPeakW: 0,
+    todayImportPeakAt: null, todayExportPeakAt: null, monthImportPeakAt: null, monthExportPeakAt: null,
+    todaySolarPeakW: 0, todaySolarPeakAt: null, solarStartAt: null, solarEndAt: null,
+    todayDemandPeakW: 0, todayDemandPeakAt: null,
+    bestDay: null, worstDay: null
+  };
+  if (!pool || !dbReady) return empty;
+  try {
+    const { rows } = await pool.query(`
+      WITH local_rows AS (
+        SELECT *, captured_at AT TIME ZONE 'Asia/Karachi' AS local_ts
+        FROM master_samples_v3
+        WHERE captured_at >= NOW() - INTERVAL '40 days'
+      ),
+      today AS (
+        SELECT * FROM local_rows
+        WHERE local_ts::date = (NOW() AT TIME ZONE 'Asia/Karachi')::date
+      ),
+      month_rows AS (
+        SELECT * FROM local_rows
+        WHERE date_trunc('month', local_ts) = date_trunc('month', NOW() AT TIME ZONE 'Asia/Karachi')
+      ),
+      daily AS (
+        SELECT local_ts::date AS day,
+               SUM(combined_solar_w) * $1::double precision / 3600000.0 AS solar_kwh_est
+        FROM local_rows
+        WHERE local_ts::date < (NOW() AT TIME ZONE 'Asia/Karachi')::date
+        GROUP BY local_ts::date
+        HAVING COUNT(*) >= 10
+      )
+      SELECT
+        (SELECT COUNT(*) FROM today)::bigint AS today_samples,
+        COALESCE((SELECT MAX(meter_import_w) FROM today),0) AS today_import_peak_w,
+        COALESCE((SELECT MAX(meter_export_w) FROM today),0) AS today_export_peak_w,
+        COALESCE((SELECT MAX(meter_import_w) FROM month_rows),0) AS month_import_peak_w,
+        COALESCE((SELECT MAX(meter_export_w) FROM month_rows),0) AS month_export_peak_w,
+        (SELECT captured_at FROM today ORDER BY meter_import_w DESC NULLS LAST LIMIT 1) AS today_import_peak_at,
+        (SELECT captured_at FROM today ORDER BY meter_export_w DESC NULLS LAST LIMIT 1) AS today_export_peak_at,
+        (SELECT captured_at FROM month_rows ORDER BY meter_import_w DESC NULLS LAST LIMIT 1) AS month_import_peak_at,
+        (SELECT captured_at FROM month_rows ORDER BY meter_export_w DESC NULLS LAST LIMIT 1) AS month_export_peak_at,
+        COALESCE((SELECT MAX(combined_solar_w) FROM today),0) AS today_solar_peak_w,
+        (SELECT captured_at FROM today ORDER BY combined_solar_w DESC NULLS LAST LIMIT 1) AS today_solar_peak_at,
+        (SELECT MIN(captured_at) FROM today WHERE combined_solar_w >= 100) AS solar_start_at,
+        (SELECT MAX(captured_at) FROM today WHERE combined_solar_w >= 100) AS solar_end_at,
+        COALESCE((SELECT MAX(combined_demand_w) FROM today),0) AS today_demand_peak_w,
+        (SELECT captured_at FROM today ORDER BY combined_demand_w DESC NULLS LAST LIMIT 1) AS today_demand_peak_at,
+        (SELECT json_build_object('date',day,'solarKwh',solar_kwh_est) FROM daily ORDER BY solar_kwh_est DESC LIMIT 1) AS best_day,
+        (SELECT json_build_object('date',day,'solarKwh',solar_kwh_est) FROM daily ORDER BY solar_kwh_est ASC LIMIT 1) AS worst_day
+    `, [HISTORY_SAMPLE_SECONDS]);
+    const r = rows[0] || {};
+    return {
+      online: true,
+      todaySamples: Number(r.today_samples || 0),
+      todayImportPeakW: num(r.today_import_peak_w), todayExportPeakW: num(r.today_export_peak_w),
+      monthImportPeakW: num(r.month_import_peak_w), monthExportPeakW: num(r.month_export_peak_w),
+      todayImportPeakAt: r.today_import_peak_at || null, todayExportPeakAt: r.today_export_peak_at || null,
+      monthImportPeakAt: r.month_import_peak_at || null, monthExportPeakAt: r.month_export_peak_at || null,
+      todaySolarPeakW: num(r.today_solar_peak_w), todaySolarPeakAt: r.today_solar_peak_at || null,
+      solarStartAt: r.solar_start_at || null, solarEndAt: r.solar_end_at || null,
+      todayDemandPeakW: num(r.today_demand_peak_w), todayDemandPeakAt: r.today_demand_peak_at || null,
+      bestDay: r.best_day || null, worstDay: r.worst_day || null,
+      note: "Daily energy ranking is estimated from stored power samples."
+    };
+  } catch (error) {
+    return { ...empty, error: error.message };
+  }
+}
+
+async function fetchAnalytics() {
+  const live = await fetchLive({ store: false, cacheMs: 4500 });
+  const stats = await analyticsFromDb();
+  const a = live.systems?.pv14000 || null;
+  const b = live.systems?.pv9000 || null;
+  const u = live.systems?.matrix || null;
+  const c = live.systems?.combined || {};
+  const m = live.meter || null;
+  const clock = pakistanClock();
+  const physicalSignedW = m?.online && m.mode === "IMPORTING" ? num(m.importW)
+    : m?.online && m.mode === "EXPORTING" ? -num(m.exportW)
+    : m?.online && m.mode === "IDLE" ? 0 : null;
+  const inverterSignedW = num(c.gridW);
+  const reconciliationDiffW = physicalSignedW == null ? null : physicalSignedW - inverterSignedW;
+  const reconciliationAbsW = reconciliationDiffW == null ? null : Math.abs(reconciliationDiffW);
+  const reconciliationBaseW = physicalSignedW == null ? 0 : Math.max(100, Math.abs(physicalSignedW), Math.abs(inverterSignedW));
+  const reconciliationPct = reconciliationAbsW == null ? null : reconciliationAbsW / reconciliationBaseW * 100;
+  const importW = num(m?.importW);
+  const exportW = num(m?.exportW);
+  const activeLimitW = clock.dayMode ? DAY_EXPORT_LIMIT_W : NIGHT_IMPORT_LIMIT_W;
+  const activePowerW = clock.dayMode ? exportW : importW;
+  const headroomW = activeLimitW - activePowerW;
+  const soc = u?.batteryPct == null ? null : num(u.batteryPct);
+  const upsLoadW = num(u?.loadW);
+  const remainingBatteryKwh = BATTERY_CAPACITY_KWH > 0 && soc != null ? BATTERY_CAPACITY_KWH * Math.max(0, Math.min(100, soc)) / 100 : null;
+  const backupRuntimeHours = remainingBatteryKwh != null && upsLoadW >= 50 ? remainingBatteryKwh / (upsLoadW / 1000) : null;
+  const balanceUsingPhysicalW = physicalSignedW == null ? null : num(c.solarW) + physicalSignedW - num(c.siteDemandW);
+  const solarCapacityPct = TOTAL_PV_INSTALLED_W > 0 ? num(c.solarW) / TOTAL_PV_INSTALLED_W * 100 : 0;
+  return {
+    ok: Boolean(live.ok), updatedAt: Date.now(), timezone: "Asia/Karachi",
+    mode: { dayMode: clock.dayMode, label: clock.label, dayStart: DAY_MODE_START, dayEnd: DAY_MODE_END },
+    config: {
+      nightImportLimitW: NIGHT_IMPORT_LIMIT_W, dayExportLimitW: DAY_EXPORT_LIMIT_W,
+      electricityRatePkr: RATE, exportRatePkr: EXPORT_RATE,
+      batteryCapacityKwh: BATTERY_CAPACITY_KWH || null,
+      targetDailyYieldKwhPerKwp: TARGET_DAILY_YIELD_KWH_PER_KWP || null,
+      reconciliationAlertW: RECONCILIATION_ALERT_W, alertTempC: ALERT_TEMP_C
+    },
+    current: {
+      solarW: num(c.solarW), demandW: num(c.siteDemandW), inverterGridW: inverterSignedW,
+      physicalGridW: physicalSignedW, importW, exportW,
+      activeLimitW, activePowerW, headroomW,
+      balanceErrorW: balanceUsingPhysicalW,
+      reconciliationDiffW, reconciliationAbsW, reconciliationPct,
+      batteryPct: soc, batteryW: num(u?.batteryW), upsLoadW,
+      backupRuntimeHours, remainingBatteryKwh,
+      solarCapacityPct,
+      pv14000SolarW: num(a?.solarW), pv9000SolarW: num(b?.solarW)
+    },
+    peaks: stats,
+    safety: { readOnly: true, note: "Monitoring and analytics only. No Tuya or inverter control command is sent by Master." }
+  };
+}
+
 async function fetchWeather() {
   try {
     const payload = await getJson(`${MATRIX_API_BASE}/api/weather`, { timeoutMs: 8000 });
@@ -963,6 +1153,7 @@ const server = http.createServer(async (req, res) => {
       const stored = await storeSample(live, true);
       return json(res, 200, { ok: true, stored, updatedAt: live.updatedAt, history: await historyStats() });
     }
+    if (url.pathname === "/api/master/analytics") return json(res, 200, await fetchAnalytics());
     if (url.pathname === "/api/master/weather") return json(res, 200, await fetchWeather());
     if (url.pathname === "/api/master/tuya-energy-stats") return json(res, 200, await fetchTuyaEnergyStats());
     if (url.pathname === "/api/master/tuya-energy") return json(res, 200, await fetchTuyaEnergyRange({
@@ -978,6 +1169,7 @@ const server = http.createServer(async (req, res) => {
       matrix: { base: MATRIX_API_BASE, configured: Boolean(MATRIX_API_BASE), role: "UPS", pvInstalledW: 0 },
       capacities: { pv14000PvW: PV14000_PV_INSTALLED_W, pv14000AcW: PV14000_AC_CAPACITY_W, pv9000PvW: PV9000_PV_INSTALLED_W, pv9000AcW: PV9000_AC_CAPACITY_W, matrixAcW: MATRIX_AC_CAPACITY_W, totalPvW: TOTAL_PV_INSTALLED_W },
       topology: { pv9000FeedsMatrix: true, matrixIsUps: true, smartLoadSource: "PV9000", pv9000LoadIncludesUps: PV9000_LOAD_INCLUDES_UPS, pv9000LoadIncludesSmart: PV9000_LOAD_INCLUDES_SMART },
+      intelligence: { nightImportLimitW: NIGHT_IMPORT_LIMIT_W, dayExportLimitW: DAY_EXPORT_LIMIT_W, dayModeStart: DAY_MODE_START, dayModeEnd: DAY_MODE_END, batteryCapacityKwh: BATTERY_CAPACITY_KWH || null, exportRatePkr: EXPORT_RATE },
       history: await historyStats()
     });
 

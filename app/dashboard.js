@@ -11,6 +11,11 @@ let activeEnergyPeriod = 'T';
 let energy = null;
 let tuyaRangeMode = 'day';
 let tuyaQuickLoaded = false;
+let analytics = null;
+let timelineHistory = { pv14000: [], pv9000: [], matrix: [], combined: [] };
+let todayEnergy = null;
+let connectionAlertCount = 0;
+let smartAlertCount = 0;
 
 function set(id, value) { const el = $(id); if (el) el.textContent = value; }
 function uiIcon(name, cls='') { return `<svg class="uiIcon ${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`; }
@@ -52,6 +57,16 @@ function pkParts(){
 function pkToday(){const p=pkParts();return `${p.year}-${p.month}-${p.day}`;}
 function pkMonth(){const p=pkParts();return `${p.year}-${p.month}`;}
 function nullableKwh(v){return v==null||!Number.isFinite(Number(v))?'-- kWh':`${Number(v).toFixed(2)} kWh`;}
+function fmtPkr(v){return `PKR ${Math.round(finite(v)).toLocaleString('en-PK')}`;}
+function fmtTimePk(ts){if(!ts)return'--';const d=new Date(ts);if(!Number.isFinite(d.getTime()))return'--';return d.toLocaleTimeString('en-GB',{timeZone:'Asia/Karachi',hour:'2-digit',minute:'2-digit',hour12:false});}
+function fmtDuration(hours){const h=Number(hours);if(!Number.isFinite(h)||h<=0)return'--';const whole=Math.floor(h),mins=Math.round((h-whole)*60);return whole>0?`${whole}h ${mins}m`:`${mins} min`;}
+function clamp(v,min=0,max=100){return Math.max(min,Math.min(max,finite(v)));}
+function meterSignedW(m){if(!m?.online)return null;const mode=String(m.mode||'').toUpperCase();if(mode==='IMPORTING')return finite(m.importW);if(mode==='EXPORTING')return-finite(m.exportW);if(mode==='IDLE')return 0;return null;}
+function fmtGridSigned(v){if(v==null||!Number.isFinite(Number(v)))return'UNKNOWN';const n=Number(v);if(Math.abs(n)<30)return'IDLE 0 W';return `${n>=0?'IMPORT':'EXPORT'} ${fmtPower(Math.abs(n))}`;}
+function pkDateKey(ts=Date.now()){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Karachi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ts));}
+function statusFromPct(p){return p>=100?'LIMIT':p>=90?'HIGH':p>=80?'WATCH':'NORMAL';}
+function classFromPct(p){return p>=100?'danger':p>=80?'warn':'good';}
+function updateAlertBadge(){set('alertCount',String(connectionAlertCount+smartAlertCount));}
 setInterval(clock,1000); clock();
 
 $$('.navtab').forEach((button)=>button.addEventListener('click',()=>{
@@ -118,13 +133,37 @@ async function loadHistory(hours=24){
     set('historyChip',online?`History • ${finite(history.samples)} online samples`:'History • source fallback');
     $('historyChip')?.classList.toggle('onlineHistory',online);
     drawAll();
+    renderIntelligenceCenter();
   }catch(_error){set('historyChip','History • unavailable');}
+}
+async function loadAnalytics(){
+  try{
+    const response=await fetch('/api/master/analytics',{cache:'no-store'});
+    analytics=await response.json();
+    renderIntelligenceCenter();
+    renderCommandView();
+    drawDailyTimeline();
+  }catch(_error){analytics=null;set('intelStatus','ANALYTICS OFFLINE');}
+}
+async function loadTimelineHistory(){
+  try{
+    const response=await fetch('/api/master/history?hours=24',{cache:'no-store'});
+    timelineHistory=await response.json();
+    drawDailyTimeline();
+    renderIntelligenceCenter();
+  }catch(_error){}
+}
+async function loadTodayEnergy(){
+  if(activeEnergyPeriod==='T' && energy){todayEnergy=energy;renderIntelligenceCenter();return;}
+  try{const r=await fetch('/api/master/energy?period=T',{cache:'no-store'});todayEnergy=await r.json();renderIntelligenceCenter();}catch(_error){}
 }
 async function loadEnergy(period='T'){
   try{
     const response=await fetch(`/api/master/energy?period=${encodeURIComponent(period)}`,{cache:'no-store'});
     energy=await response.json();
+    if(period==='T') todayEnergy=energy;
     renderEnergy();
+    renderIntelligenceCenter();
   }catch(error){const n=$('energyNotice');if(n){n.hidden=false;n.textContent=`Totals unavailable: ${error.message}`;}}
 }
 
@@ -223,6 +262,8 @@ function render(){
   renderDetailPages(a,b,u,c);
   renderHealth(a,b,u,c,m,live.errors||{});
   renderEnergyFlow(a,b,u,c,m);
+  renderIntelligenceCenter();
+  renderCommandView();
   drawAll();
 }
 function setState(id,online){set(id,online?'ONLINE':'OFFLINE');$(id)?.classList.toggle('online',Boolean(online));}
@@ -376,6 +417,18 @@ function renderEnergyFlow(a,b,u,c={},m=null){
   set('flowBatteryLineTitle',batteryMode==='DISCHARGING'?'Battery → Matrix':'Matrix → Battery');
   set('flowBatteryLineText',u?fmtSignedPower(batteryW):'--');
 
+  const physicalSigned=meterSignedW(m);
+  const balanceError=physicalSigned==null?null:totalSolar+physicalSigned-demand;
+  set('flowBalanceSolar',fmtPower(totalSolar));
+  set('flowBalanceGrid',physicalSigned==null?fmtGridSigned(c?.gridW):fmtGridSigned(physicalSigned));
+  set('flowBalanceDemand',fmtPower(demand));
+  set('flowBalanceError',balanceError==null?'--':fmtSignedPower(balanceError));
+  const balanceAbs=balanceError==null?Infinity:Math.abs(balanceError);
+  const balanceClass=balanceAbs<250?'good':balanceAbs<750?'warn':'danger';
+  const balanceBox=$('flowBalanceError')?.closest('.balanceCheck');
+  if(balanceBox){balanceBox.classList.remove('good','warn','danger');balanceBox.classList.add(balanceClass);}
+  set('flowBalanceStatus',balanceError==null?'Tuya direction unavailable':balanceAbs<250?'Excellent accounting match':balanceAbs<750?'Small measurement difference':'Check CT / meter reconciliation');
+
   setFlowNodeState('flowNodePv14000',Boolean(a),pv14000Solar>30);
   setFlowNodeState('flowNodePv9000',Boolean(b),pv9000Solar>30 || smart>30 || matrixIn>30);
   setFlowNodeState('flowNodeGrid',Boolean(m?.online)||Math.abs(finite(c?.gridW))>0,grid.watts>30);
@@ -418,6 +471,117 @@ function renderEnergyFlow(a,b,u,c={},m=null){
   });
 }
 
+
+function setProgress(id,pctValue){
+  const el=$(id); if(!el)return;
+  const p=finite(pctValue); el.style.width=`${clamp(p,0,100)}%`;
+  el.classList.remove('warn','danger'); if(p>=100)el.classList.add('danger'); else if(p>=80)el.classList.add('warn');
+}
+function setStateClass(el,level){if(!el)return;el.classList.remove('good','warn','danger');if(level)el.classList.add(level);}
+function renderIntelligenceCenter(){
+  if(!live)return;
+  const s=live.systems||{},a=s.pv14000||null,b=s.pv9000||null,u=s.matrix||null,c=s.combined||{};const m=live.meter||null;
+  const cfg=analytics?.config||live.guardrails||{};const peaks=analytics?.peaks||{};const current=analytics?.current||{};
+  const importLimit=finite(cfg.nightImportLimitW,5000),exportLimit=finite(cfg.dayExportLimitW,6000);
+  const importW=finite(m?.importW),exportW=finite(m?.exportW);const importPct=importLimit?importW/importLimit*100:0,exportPct=exportLimit?exportW/exportLimit*100:0;
+  const dayMode=analytics?.mode?.dayMode ?? false;const modeLabel=analytics?.mode?.label||(dayMode?'DAY EXPORT WATCH':'NIGHT IMPORT WATCH');
+  const activeW=dayMode?exportW:importW,activeLimit=dayMode?exportLimit:importLimit,headroom=activeLimit-activeW;
+  const physicalSigned=analytics?.current?.physicalGridW ?? meterSignedW(m);const inverterSigned=finite(c.gridW);
+  const reconAbs=analytics?.current?.reconciliationAbsW ?? (physicalSigned==null?null:Math.abs(physicalSigned-inverterSigned));
+  const reconPct=analytics?.current?.reconciliationPct ?? (reconAbs==null?null:reconAbs/Math.max(100,Math.abs(finite(physicalSigned)),Math.abs(inverterSigned))*100);
+  const balanceError=analytics?.current?.balanceErrorW ?? (physicalSigned==null?null:finite(c.solarW)+finite(physicalSigned)-finite(c.siteDemandW));
+  const balanceAbs=balanceError==null?null:Math.abs(balanceError);
+
+  set('guardMode',modeLabel); set('guardWindow',`${cfg.dayModeStart||'07:30'}–${cfg.dayModeEnd||'17:00'} day • otherwise night`);
+  set('guardPower',`${dayMode?'EXPORT':'IMPORT'} ${fmtPower(activeW)}`);set('guardPowerSub',`Target ${fmtPower(activeLimit)} • Tuya physical meter`);
+  set('guardHeadroom',headroom>=0?fmtPower(headroom):`OVER ${fmtPower(-headroom)}`);set('guardHeadroomSub',headroom>=0?'Available margin':'Target exceeded');
+  set('guardRecon',reconAbs==null?'UNKNOWN':fmtPower(reconAbs));set('guardReconSub',reconAbs==null?'Need confirmed Tuya direction':`${finite(reconPct).toFixed(1)}% difference`);
+  const guardCards=$$('.smartGuardCard'); if(guardCards[1])setStateClass(guardCards[1],classFromPct(dayMode?exportPct:importPct));if(guardCards[2])setStateClass(guardCards[2],headroom<0?'danger':headroom<activeLimit*.1?'warn':'good');if(guardCards[3])setStateClass(guardCards[3],reconAbs==null?'warn':reconAbs>finite(cfg.reconciliationAlertW,500)?'warn':'good');
+
+  set('intelStatus',analytics?.ok===false?'PARTIAL':'MONITORING');
+  set('intelBalance',balanceError==null?'--':fmtSignedPower(balanceError));
+  set('intelBalanceSub',balanceError==null?'Physical Tuya direction required':balanceAbs<250?'Excellent power accounting':balanceAbs<750?'Small measurement difference':'Large balance difference');
+  set('intelBalanceEquation',physicalSigned==null?'Solar + physical grid − demand':`${fmtPower(c.solarW)} + ${fmtGridSigned(physicalSigned)} − ${fmtPower(c.siteDemandW)}`);
+  set('intelImportGuard',fmtPower(importW));set('intelImportGuardSub',`${importPct.toFixed(1)}% of ${fmtPower(importLimit)} • ${dayMode?'standby in day':'active night guard'}`);setProgress('intelImportProgress',importPct);
+  set('intelExportGuard',fmtPower(exportW));set('intelExportGuardSub',`${exportPct.toFixed(1)}% of ${fmtPower(exportLimit)} • ${dayMode?'active day guard':'standby at night'}`);setProgress('intelExportProgress',exportPct);
+  set('intelRecon',reconAbs==null?'--':fmtPower(reconAbs));set('intelReconSub',reconAbs==null?'Direction not confirmed':`${finite(reconPct).toFixed(1)}% difference`);set('intelReconEquation',`${physicalSigned==null?'Tuya --':`Tuya ${fmtGridSigned(physicalSigned)}`} • Inv ${fmtGridSigned(inverterSigned)}`);
+
+  const todayImportPeak=Math.max(importW,finite(peaks.todayImportPeakW));const monthImportPeak=Math.max(todayImportPeak,finite(peaks.monthImportPeakW));
+  const todayExportPeak=Math.max(exportW,finite(peaks.todayExportPeakW));const monthExportPeak=Math.max(todayExportPeak,finite(peaks.monthExportPeakW));
+  set('mdiCurrent',fmtPower(importW));set('mdiPct',`${importPct.toFixed(1)}%`);setProgress('mdiTrack',importPct);
+  set('mdiTodayPeak',fmtPower(todayImportPeak));set('mdiTodayTime',peaks.todayImportPeakAt?fmtTimePk(peaks.todayImportPeakAt):'Collecting');set('mdiMonthPeak',fmtPower(monthImportPeak));set('mdiMonthTime',peaks.monthImportPeakAt?fmtTimePk(peaks.monthImportPeakAt):'Collecting');
+  set('mdiHeadroom',importLimit-importW>=0?fmtPower(importLimit-importW):`OVER ${fmtPower(importW-importLimit)}`);set('mdiStatus',statusFromPct(importPct));const mdiStatus=$('mdiStatus');if(mdiStatus){mdiStatus.className=`${importPct>=100?'dangerText':importPct>=80?'warnText':'goodText'}`;}
+  set('dgCurrent',fmtPower(exportW));set('dgPct',`${exportPct.toFixed(1)}%`);setProgress('dgTrack',exportPct);
+  set('dgTodayPeak',fmtPower(todayExportPeak));set('dgTodayTime',peaks.todayExportPeakAt?fmtTimePk(peaks.todayExportPeakAt):'Collecting');set('dgMonthPeak',fmtPower(monthExportPeak));set('dgMonthTime',peaks.monthExportPeakAt?fmtTimePk(peaks.monthExportPeakAt):'Collecting');
+  set('dgHeadroom',exportLimit-exportW>=0?fmtPower(exportLimit-exportW):`OVER ${fmtPower(exportW-exportLimit)}`);set('dgStatus',statusFromPct(exportPct));const dgStatus=$('dgStatus');if(dgStatus){dgStatus.className=`${exportPct>=100?'dangerText':exportPct>=80?'warnText':'goodText'}`;}
+
+  set('batteryIntelSoc',u?.batteryPct==null?'--':`${Math.round(finite(u.batteryPct))}%`);set('batteryIntelPower',u?`${batteryFlowMode(u.batteryW,u.batteryMode)} • ${fmtPower(u.batteryW)}`:'--');set('batteryIntelLoad',u?fmtPower(u.loadW):'--');
+  const cap=analytics?.config?.batteryCapacityKwh||live.capacities?.batteryKwh||null;set('batteryIntelCapacity',cap?`${finite(cap).toFixed(2)} kWh`:'Not configured');set('batteryIntelRuntime',analytics?.current?.backupRuntimeHours?fmtDuration(analytics.current.backupRuntimeHours):'--');
+  set('batteryIntelNote',cap?'Ideal runtime estimate from configured capacity, SOC and current UPS load.':'Set BATTERY_CAPACITY_KWH in Render to enable runtime estimation.');
+
+  const te=todayEnergy||(energy?.period==='T'?energy:null);const ec=te?.combined||{},ea=te?.pv14000||{},eb=te?.pv9000||{};const rate=finite(te?.rate??cfg.electricityRatePkr,60),exportRate=finite(cfg.exportRatePkr,0);
+  const solarKwh=finite(ec.solarKwh),loadKwh=finite(ec.loadKwh),importKwh=finite(ec.importKwh),exportKwh=finite(ec.exportKwh);const solarValue=solarKwh*rate,importCost=importKwh*rate,exportCredit=exportKwh*exportRate,netGridCost=importCost-exportCredit;
+  const gridDependency=loadKwh>0?clamp(importKwh/loadKwh*100):0;const selfConsumption=solarKwh>0?clamp((solarKwh-exportKwh)/solarKwh*100):0;const selfConsumedKwh=Math.max(0,Math.min(solarKwh,solarKwh-exportKwh));const estimatedBenefit=selfConsumedKwh*rate+exportCredit;
+  set('financeSolarValue',te?fmtPkr(solarValue):'--');set('financeImportCost',te?fmtPkr(importCost):'--');set('financeExportCredit',te?fmtPkr(exportCredit):'--');set('financeBenefit',te?fmtPkr(estimatedBenefit):'--');set('financeNetGrid',te?fmtPkr(netGridCost):'--');set('financeGridDependency',te?`${gridDependency.toFixed(1)}%`:'--');set('financeSelfConsumption',te?`${selfConsumption.toFixed(1)}%`:'--');
+
+  const yieldCombined=solarKwh/11.14,yieldA=finite(ea.solarKwh)/6.78,yieldB=finite(eb.solarKwh)/4.36;set('perfYield',te?yieldCombined.toFixed(2):'--');set('perfPv14000Yield',te?`${yieldA.toFixed(2)} kWh/kWp`:'--');set('perfPv9000Yield',te?`${yieldB.toFixed(2)} kWh/kWp`:'--');set('perfLiveUtil',`${clamp(finite(c.solarW)/11140*100,0,999).toFixed(1)}%`);set('perfSolarPeak',peaks.todaySolarPeakW?`${fmtPower(peaks.todaySolarPeakW)} @ ${fmtTimePk(peaks.todaySolarPeakAt)}`:'Collecting');set('perfSmartEnergy',te?fmtKwh(ec.smartLoadKwh):'--');const clipA=finite(a?.solarW)>=6780*.97,clipB=finite(b?.solarW)>=4360*.97;set('perfClipping',clipA||clipB?`WATCH • ${clipA?'PV14000 ':''}${clipB?'PV9000':''}`.trim():'No live clipping sign');
+  const targetYield=finite(cfg.targetDailyYieldKwhPerKwp);if(targetYield>0&&te){const target=targetYield*11.14;set('perfTarget',`${(solarKwh/Math.max(.01,target)*100).toFixed(0)}% • ${target.toFixed(1)} kWh target`);}else set('perfTarget','Not configured');
+  const best=peaks.bestDay,worst=peaks.worstDay;set('perfBestWorst',best&&worst?`History estimate • Best ${String(best.date).slice(0,10)} ${finite(best.solarKwh).toFixed(1)} kWh • Worst ${String(worst.date).slice(0,10)} ${finite(worst.solarKwh).toFixed(1)} kWh`:'Best/worst complete-day estimates appear as PostgreSQL history grows.');
+
+  set('timelineSolarStart',fmtTimePk(peaks.solarStartAt));set('timelineSolarPeak',peaks.todaySolarPeakW?`${fmtPower(peaks.todaySolarPeakW)} • ${fmtTimePk(peaks.todaySolarPeakAt)}`:'--');set('timelineDemandPeak',peaks.todayDemandPeakW?`${fmtPower(peaks.todayDemandPeakW)} • ${fmtTimePk(peaks.todayDemandPeakAt)}`:'--');set('timelineSolarEnd',fmtTimePk(peaks.solarEndAt));
+  renderSmartAlerts({a,b,u,c,m,cfg,dayMode,importW,exportW,importPct,exportPct,reconAbs,balanceAbs});
+  renderSmartInsights({a,b,u,c,m,cfg,dayMode,headroom,activeLimit,reconAbs,balanceError,te,solarKwh,selfConsumption,peaks,todayImportPeak,todayExportPeak});
+}
+
+function renderSmartAlerts(ctx){
+  const alerts=[];const counted=[];const add=(level,text,count=true)=>{alerts.push({level,text});if(count&&level!=='ok'&&level!=='info')counted.push(1);};
+  const {a,b,u,c,m,cfg,dayMode,importW,exportW,importPct,exportPct,reconAbs,balanceAbs}=ctx;
+  if(!m?.online)add('danger','Tuya physical utility meter is offline. Guardrail monitoring is unavailable.',false);
+  else if(String(m.mode||'').toUpperCase()==='UNKNOWN')add('warn','Tuya live direction is UNKNOWN. Wait for a confirmed Import/Export direction.',true);
+  if(!dayMode){if(importPct>=100)add('danger',`Night import is ${fmtPower(importW)}, above the ${fmtPower(cfg.nightImportLimitW||5000)} target.`);else if(importPct>=90)add('warn',`Night import is at ${importPct.toFixed(1)}% of the 5 kW target.`);else if(importPct>=80)add('warn',`Night import has entered the 80% watch zone (${fmtPower(importW)}).`);}
+  if(dayMode){if(exportPct>=100)add('danger',`Day export is ${fmtPower(exportW)}, above the ${fmtPower(cfg.dayExportLimitW||6000)} DG target.`);else if(exportPct>=90)add('warn',`Day export is at ${exportPct.toFixed(1)}% of the 6 kW target.`);else if(exportPct>=80)add('warn',`Day export has entered the 80% watch zone (${fmtPower(exportW)}).`);}
+  const reconLimit=finite(cfg.reconciliationAlertW,500);if(reconAbs!=null&&reconAbs>reconLimit*2)add('danger',`Tuya and inverter grid readings differ by ${fmtPower(reconAbs)}.`);else if(reconAbs!=null&&reconAbs>reconLimit)add('warn',`Grid reconciliation difference is ${fmtPower(reconAbs)}.`);
+  if(balanceAbs!=null&&balanceAbs>1000)add('warn',`Whole-site power accounting difference is ${fmtPower(balanceAbs)}.`);
+  const tempLimit=finite(cfg.alertTempC,65);for(const [name,temp] of [['PV14000',a?.temp],['PV9000',b?.temp],['Matrix',u?.transformer||u?.temp],['Tuya meter',m?.temperatureC]])if(temp!=null&&finite(temp)>tempLimit)add('warn',`${name} temperature is ${Math.round(finite(temp))}°C (watch > ${tempLimit}°C).`);
+  if(finite(a?.solarW)>=6780*.97)add('info','PV14000 is operating near installed PV capacity; clipping watch is active.',false);if(finite(b?.solarW)>=4360*.97)add('info','PV9000 is operating near installed PV capacity; clipping watch is active.',false);
+  if(u?.batteryPct!=null&&finite(u.batteryPct)<20)add('warn',`UPS battery SOC is low at ${Math.round(finite(u.batteryPct))}%.`);
+  const staleLimit=180000;for(const [name,obj] of [['PV14000',a],['PV9000',b],['Matrix',u],['Tuya',m]])if(obj?.updatedAt&&Date.now()-finite(obj.updatedAt)>staleLimit)add('warn',`${name} telemetry is stale (${ageText(obj.updatedAt)}).`);
+  if(!alerts.length)add('ok','All smart guardrails are normal. No threshold, temperature or reconciliation alert is active.',false);
+  const box=$('smartAlerts');if(box)box.innerHTML=alerts.map(x=>`<div class="smartAlert ${x.level}">${x.text}</div>`).join('');smartAlertCount=counted.length;updateAlertBadge();
+}
+
+function renderSmartInsights(ctx){
+  const cards=[];const add=(title,text,level='good')=>cards.push(`<div class="insightCard ${level}"><strong>${title}</strong>${text}</div>`);
+  const {a,b,u,c,dayMode,headroom,activeLimit,reconAbs,balanceError,te,solarKwh,selfConsumption,peaks,todayImportPeak,todayExportPeak}=ctx;
+  add(dayMode?'Day export watch':'Night import watch',headroom>=0?`${fmtPower(headroom)} headroom remains before the ${fmtPower(activeLimit)} target.`:`Target is exceeded by ${fmtPower(-headroom)}.`,headroom>=0?'good':'danger');
+  const solar=finite(c.solarW);if(solar>50)add('Solar contribution',`PV14000 supplies ${Math.round(finite(a?.solarW)/solar*100)}% and PV9000 ${Math.round(finite(b?.solarW)/solar*100)}% of live solar.`);
+  if(te)add('Today energy',`${solarKwh.toFixed(2)} kWh solar produced with ${selfConsumption.toFixed(1)}% estimated self-consumption.`);
+  if(reconAbs!=null)add('Grid reconciliation',`Physical Tuya meter and inverter calculation differ by ${fmtPower(reconAbs)}.`,reconAbs>500?'warn':'good');
+  if(balanceError!=null)add('Power accounting',`${fmtSignedPower(balanceError)} balance error on the upstream bus.`,Math.abs(balanceError)>750?'warn':'good');
+  if(peaks?.todaySolarPeakW)add('Solar peak',`Today peak is ${fmtPower(peaks.todaySolarPeakW)} at ${fmtTimePk(peaks.todaySolarPeakAt)}.`);
+  add('Peak guardrails',`Today import peak ${fmtPower(todayImportPeak)} • export peak ${fmtPower(todayExportPeak)}.`,(todayImportPeak>5000||todayExportPeak>6000)?'warn':'good');
+  if(analytics?.current?.backupRuntimeHours)add('UPS backup estimate',`At the current UPS load, ideal remaining runtime is about ${fmtDuration(analytics.current.backupRuntimeHours)}.`);
+  const box=$('smartInsights');if(box)box.innerHTML=cards.slice(0,8).join('')||'<div class="insightCard">Collecting live data…</div>';
+}
+
+function renderCommandView(){
+  if(!live)return;const s=live.systems||{},a=s.pv14000,b=s.pv9000,u=s.matrix,c=s.combined||{},m=live.meter||null;const cfg=analytics?.config||live.guardrails||{};
+  const importLimit=finite(cfg.nightImportLimitW,5000),exportLimit=finite(cfg.dayExportLimitW,6000);const importW=finite(m?.importW),exportW=finite(m?.exportW);const physical=meterSignedW(m);
+  set('cmdSolar',fmtPower(c.solarW));set('cmdSolarSub',`PV14000 ${fmtPower(a?.solarW)} • PV9000 ${fmtPower(b?.solarW)}`);set('cmdDemand',fmtPower(c.siteDemandW));set('cmdGrid',physical==null?'UNKNOWN':fmtPower(Math.abs(physical)));set('cmdGridMode',physical==null?'Tuya direction unavailable':fmtGridSigned(physical));set('cmdBattery',u?.batteryPct==null?'--':`${Math.round(finite(u.batteryPct))}%`);set('cmdBatterySub',u?`${batteryFlowMode(u.batteryW,u.batteryMode)} • ${fmtPower(u.batteryW)}`:'Matrix offline');
+  set('cmdImport',fmtPower(importW));setProgress('cmdImportTrack',importW/importLimit*100);set('cmdImportHeadroom',`${importLimit-importW>=0?fmtPower(importLimit-importW)+' headroom':'OVER '+fmtPower(importW-importLimit)} • target ${fmtPower(importLimit)}`);
+  set('cmdExport',fmtPower(exportW));setProgress('cmdExportTrack',exportW/exportLimit*100);set('cmdExportHeadroom',`${exportLimit-exportW>=0?fmtPower(exportLimit-exportW)+' headroom':'OVER '+fmtPower(exportW-exportLimit)} • target ${fmtPower(exportLimit)}`);
+  set('cmdPv14000',a?fmtPower(a.solarW):'OFFLINE');set('cmdPv14000State',a?`${ageText(a.updatedAt)} • ${gridMode(a.gridW)}`:'API unavailable');set('cmdPv9000',b?fmtPower(b.solarW):'OFFLINE');set('cmdPv9000State',b?`${ageText(b.updatedAt)} • Smart ${fmtPower(b.smartLoadW)}`:'API unavailable');set('cmdMatrix',u?fmtPower(u.loadW):'OFFLINE');set('cmdMatrixState',u?`UPS load • Battery ${fmtPct(u.batteryPct)}`:'API unavailable');set('cmdTuya',m?.online?fmtPower(m.powerW):'OFFLINE');set('cmdTuyaState',m?.online?`${String(m.mode||'').toUpperCase()} • ${finite(m.voltage).toFixed(1)} V`:'Meter unavailable');
+  const dayMode=analytics?.mode?.dayMode??false;const pctNow=dayMode?exportW/exportLimit*100:importW/importLimit*100;const alertEl=$('cmdAlert')?.closest('.commandAlert');if(alertEl){alertEl.classList.remove('warn','danger');if(pctNow>=100)alertEl.classList.add('danger');else if(pctNow>=80)alertEl.classList.add('warn');}set('cmdAlert',pctNow>=100?`${dayMode?'DAY EXPORT':'NIGHT IMPORT'} target exceeded.`:pctNow>=80?`${dayMode?'Day export':'Night import'} is in the watch zone.`:`${dayMode?'Day export':'Night import'} guard is normal.`);set('commandMode',dayMode?'DAY WATCH':'NIGHT WATCH');
+}
+
+function drawDailyTimeline(){
+  const canvas=$('dailyTimelineChart');if(!canvas)return;const source=Array.isArray(timelineHistory?.combined)&&timelineHistory.combined.length?timelineHistory.combined:(Array.isArray(history?.combined)?history.combined:[]);const today=pkToday();const data=source.filter(p=>pkDateKey(p.timestamp)===today);const{ctx,w,h}=canvasSize(canvas);ctx.clearRect(0,0,w,h);const pad={l:42,r:14,t:18,b:30};if(!data.length){ctx.fillStyle='#7893a5';ctx.font='12px Segoe UI';ctx.fillText('Today timeline will appear as PostgreSQL samples are collected.',pad.l,h/2);return;}
+  const tf=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Karachi',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});const minuteOfDay=(ts)=>{const parts=tf.formatToParts(new Date(ts));let hh=0,mm=0;for(const x of parts){if(x.type==='hour')hh=Number(x.value);if(x.type==='minute')mm=Number(x.value);}return hh*60+mm;};
+  const vals=data.flatMap(p=>[finite(p.solarW),finite(p.loadW),Math.abs(finite(p.meterImportW)-finite(p.meterExportW)||finite(p.gridW))]);const max=Math.max(1000,...vals)*1.12;const y=(v)=>pad.t+(max-finite(v))/max*(h-pad.t-pad.b);const x=(ts)=>pad.l+minuteOfDay(ts)/1440*(w-pad.l-pad.r);
+  ctx.strokeStyle='#dce9ef';ctx.lineWidth=1;for(let i=0;i<5;i++){const yy=pad.t+i*(h-pad.t-pad.b)/4;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();}for(const hour of [0,6,12,18,24]){const xx=pad.l+hour/24*(w-pad.l-pad.r);ctx.strokeStyle='#e6eff3';ctx.beginPath();ctx.moveTo(xx,pad.t);ctx.lineTo(xx,h-pad.b);ctx.stroke();ctx.fillStyle='#7893a5';ctx.font='9px Segoe UI';ctx.textAlign=hour===0?'left':hour===24?'right':'center';ctx.fillText(String(hour).padStart(2,'0'),xx,h-10);}
+  const series=[{color:COLORS.solar,key:'solarW'},{color:COLORS.load,key:'loadW'},{color:COLORS.grid,key:'physical'}];for(const ser of series){ctx.strokeStyle=ser.color;ctx.lineWidth=2;ctx.beginPath();let started=false;for(const p of data){let v;if(ser.key==='physical'){const imp=finite(p.meterImportW),exp=finite(p.meterExportW);v=imp||exp?Math.max(imp,exp):Math.abs(finite(p.gridW));}else v=finite(p[ser.key]);const xx=x(p.timestamp),yy=y(v);if(!started){ctx.moveTo(xx,yy);started=true;}else ctx.lineTo(xx,yy);}ctx.stroke();}ctx.textAlign='start';
+}
+
 function metricCards(rows){return rows.map(([label,value,small,cls=''])=>`<div class="detailCard ${cls}">${iconLabelHtml(label)}<b>${value}</b><small>${small||''}</small></div>`).join('');}
 function renderDetailPages(a,b,u,c){
   $('pv14000Page').innerHTML=metricCards(a?[
@@ -449,7 +613,8 @@ function renderHealth(a,b,u,c,m,errors){
   $('combinedHealth').innerHTML=healthRows([['Connected systems',`${count}/3`,count===3],['Tuya physical meter',m?.online?'ONLINE':'OFFLINE',Boolean(m?.online)],['Tuya direction',m?.mode||'--',Boolean(m?.online)],['Total PV','11.14 kWp',true],['Utility grid sources','PV14000 + PV9000',true],['Online history',historyOnline?'PostgreSQL ACTIVE':'Fallback',historyOnline],['Overall',count===3?'Excellent':'Partial',count===3]]);
   set('healthPill',count===3?'ALL NORMAL':'ATTENTION'); $('healthPill')?.classList.toggle('good',count===3);
   const messages=[]; if(errors.pv14000)messages.push(`PV14000: ${errors.pv14000}`); if(errors.pv9000)messages.push(`PV9000: ${errors.pv9000}`); if(errors.matrix)messages.push(`Matrix: ${errors.matrix}`); if(errors.tuya)messages.push(`Tuya meter: ${errors.tuya}`);
-  set('diagnosticNotice',messages.length?messages.join(' • '):'✓ Three-system topology is connected. Matrix internal AC transfer is excluded from utility-grid totals.'); set('alertCount',messages.length);
+  set('diagnosticNotice',messages.length?messages.join(' • '):'✓ Three-system topology is connected. Matrix internal AC transfer is excluded from utility-grid totals.');
+  connectionAlertCount=messages.length; updateAlertBadge();
 }
 
 function renderEnergy(){
@@ -466,6 +631,7 @@ function renderEnergy(){
   set('totCombinedImport',fmtKwh(c.importKwh)); set('totCombinedExport',fmtKwh(c.exportKwh));
   const notice=$('energyNotice'); const errs=energy.errors||{}; const messages=[]; if(errs.pv14000)messages.push(`PV14000: ${errs.pv14000}`); if(errs.pv9000)messages.push(`PV9000: ${errs.pv9000}`); if(errs.matrix)messages.push(`Matrix: ${errs.matrix}`); if(notice){notice.hidden=!messages.length;notice.textContent=messages.join(' • ');}
   drawEnergyBars();
+  renderIntelligenceCenter();
 }
 
 function histFor(kind){return Array.isArray(history?.[kind])?history[kind]:[];}
@@ -509,8 +675,24 @@ function drawAll(){
   drawLineChart('pv14000PvChart',[{color:COLORS.solar,data:a.map(p=>({v:p.pv1W}))},{color:COLORS.pv9000,data:a.map(p=>({v:p.pv2W}))}]);
   drawLineChart('pv9000PvChart',[{color:COLORS.solar,data:b.map(p=>({v:p.pv1W}))},{color:COLORS.pv9000,data:b.map(p=>({v:p.pv2W}))}]);
   drawEnergyBars();
+  drawDailyTimeline();
 }
 
-async function start(){initTuyaPickers();await wakeMasterSources();await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadWeather(),loadTuyaQuickTotals()]);await loadSelectedTuyaEnergy();setInterval(loadLive,10000);setInterval(()=>loadHistory(activeHours),60000);setInterval(()=>loadEnergy(activeEnergyPeriod),60000);setInterval(loadTuyaQuickTotals,300000);setInterval(loadWeather,600000);}
-window.addEventListener('resize',()=>requestAnimationFrame(drawAll));
+async function start(){
+  initTuyaPickers();
+  await wakeMasterSources();
+  await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadAnalytics(),loadTimelineHistory(),loadWeather(),loadTuyaQuickTotals()]);
+  if(!todayEnergy)todayEnergy=energy?.period==='T'?energy:null;
+  await loadSelectedTuyaEnergy();
+  renderIntelligenceCenter(); renderCommandView(); drawDailyTimeline();
+  setInterval(loadLive,10000);
+  setInterval(()=>loadHistory(activeHours),60000);
+  setInterval(()=>loadEnergy(activeEnergyPeriod),60000);
+  setInterval(loadAnalytics,30000);
+  setInterval(loadTimelineHistory,60000);
+  setInterval(loadTodayEnergy,300000);
+  setInterval(loadTuyaQuickTotals,300000);
+  setInterval(loadWeather,600000);
+}
+window.addEventListener('resize',()=>requestAnimationFrame(()=>{drawAll();drawDailyTimeline();}));
 start();

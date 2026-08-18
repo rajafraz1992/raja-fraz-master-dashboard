@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#082b43">
   <title>Raja Fraz Master Solar Command Center</title>
-  <link rel="stylesheet" href="styles.css?v=25">
+  <link rel="stylesheet" href="styles.css?v=26">
 </head>
 <body>
   <svg class="iconSprite" aria-hidden="true" focusable="false">
@@ -30,6 +30,13 @@
     <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .7-7.9A6 6 0 0 0 6.3 9.2 4.5 4.5 0 0 0 7 18z"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-pv" viewBox="0 0 24 24"><path d="M4 14h16l-2-8H6zM7 10h10M9 6l-1 8M15 6l1 8M12 14v6M8 20h8"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+    <symbol id="i-money" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h.01M17 15h.01M8 15c1.5 1 6.5 1 8-1 1.1-1.5-.7-2.7-4-3-3.3-.3-5.1-1.5-4-3 1.5-2 6.5-2 8-1"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.8 20h18.4z"/><path d="M12 9v5M12 17h.01"/></symbol>
+    <symbol id="i-compare" viewBox="0 0 24 24"><path d="M7 7h12l-3-3M17 17H5l3 3"/><path d="M19 7l-3 3M5 17l3-3"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 5h4M11 19h2"/></symbol>
+    <symbol id="i-insight" viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M8 15c-1.3-1.1-2-2.8-2-4.6A6 6 0 0 1 18 10.4c0 1.8-.8 3.5-2 4.6-.8.7-1.2 1.3-1.4 2H9.4c-.2-.7-.6-1.3-1.4-2z"/></symbol>
+    <symbol id="i-timeline" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="18" r="2"/></symbol>
   </svg>
 
   <nav class="topbar">
@@ -40,6 +47,8 @@
       <button class="navtab" data-view="matrix"><svg class="uiIcon icon-ups" aria-hidden="true"><use href="#i-ups"></use></svg><span>UPS Matrix</span></button>
       <button class="navtab" data-view="combined"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-bolt"></use></svg><span>Combined</span></button>
       <button class="navtab" data-view="flow"><svg class="uiIcon icon-grid" aria-hidden="true"><use href="#i-systems"></use></svg><span>Energy Flow</span></button>
+      <button class="navtab" data-view="intelligence"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-target"></use></svg><span>Intelligence</span></button>
+      <button class="navtab" data-view="command"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-phone"></use></svg><span>Command</span></button>
       <button class="navtab" data-view="charts"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>Charts</span></button>
       <button class="navtab" data-view="totals"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-total"></use></svg><span>Totals</span></button>
       <button class="navtab" data-view="health"><svg class="uiIcon icon-health" aria-hidden="true"><use href="#i-health"></use></svg><span>Health</span> <b id="alertCount">0</b></button>
@@ -66,6 +75,13 @@
       <div class="sectionIntro">
         <div><div class="eyebrow">LIVE SITE OVERVIEW</div><h2 class="titleWithIcon"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-dashboard"></use></svg><span>Three inverters. One command center.</span></h2><p>PV14000 + PV9000 generate solar. Matrix operates as the downstream UPS.</p></div>
         <div class="freshness"><span>Dashboard poll <b>10s</b></span><span>Matrix cloud frame <b>~60s</b></span><span id="historyChip">History • checking</span></div>
+      </div>
+
+      <div class="smartGuardStrip">
+        <div class="smartGuardCard mode"><span>ACTIVE ENERGY GUARD</span><b id="guardMode">--</b><small id="guardWindow">07:30–17:00 day watch</small></div>
+        <div class="smartGuardCard"><span>LIVE LIMIT LOAD</span><b id="guardPower">--</b><small id="guardPowerSub">Physical Tuya meter</small></div>
+        <div class="smartGuardCard"><span>HEADROOM</span><b id="guardHeadroom">--</b><small id="guardHeadroomSub">Target margin</small></div>
+        <div class="smartGuardCard"><span>METER ↔ INVERTERS</span><b id="guardRecon">--</b><small id="guardReconSub">Grid reconciliation</small></div>
       </div>
 
       <div class="topologyGrid">
@@ -238,6 +254,13 @@
             </div>
           </div>
 
+          <div class="flowBalanceRibbon">
+            <div><span>Solar supply</span><b id="flowBalanceSolar">--</b></div>
+            <div><span>Physical grid</span><b id="flowBalanceGrid">--</b></div>
+            <div><span>Upstream demand</span><b id="flowBalanceDemand">--</b></div>
+            <div class="balanceCheck"><span>Power balance error</span><b id="flowBalanceError">--</b><small id="flowBalanceStatus">Waiting for meter</small></div>
+          </div>
+
           <div class="flowMap" id="flowMap">
             <svg class="flowSvg" viewBox="0 0 1200 720" preserveAspectRatio="none" aria-hidden="true">
               <defs>
@@ -326,6 +349,68 @@
       </div>
     </section>
 
+    <section id="intelligence" class="view">
+      <div class="pageShell intelligenceShell">
+        <div class="pageTitle">
+          <div><div class="eyebrow">SITE INTELLIGENCE • READ ONLY</div><h2 class="titleWithIcon"><svg class="uiIcon icon-smart"><use href="#i-target"></use></svg><span>Energy Intelligence Center</span></h2><p>Physical-meter guardrails, peak demand, export headroom, reconciliation, battery intelligence, financials and performance insights.</p></div>
+          <span class="statusPill good" id="intelStatus">MONITORING</span>
+        </div>
+
+        <div class="intelligenceHeroGrid">
+          <article class="intelHeroCard balanceHero"><span>WHOLE-SITE POWER BALANCE</span><b id="intelBalance">--</b><small id="intelBalanceSub">Solar + grid − upstream demand</small><div class="miniEquation" id="intelBalanceEquation">--</div></article>
+          <article class="intelHeroCard importHero"><span>NIGHT IMPORT GUARD</span><b id="intelImportGuard">--</b><small id="intelImportGuardSub">Target ≤ 5.00 kW</small><div class="intelProgress"><i id="intelImportProgress"></i></div></article>
+          <article class="intelHeroCard exportHero"><span>DAY EXPORT GUARD</span><b id="intelExportGuard">--</b><small id="intelExportGuardSub">Target ≤ 6.00 kW</small><div class="intelProgress"><i id="intelExportProgress"></i></div></article>
+          <article class="intelHeroCard compareHero"><span>TUYA ↔ INVERTER GRID</span><b id="intelRecon">--</b><small id="intelReconSub">Physical vs calculated grid</small><div class="miniEquation" id="intelReconEquation">--</div></article>
+        </div>
+
+        <div class="limitCenterGrid">
+          <article class="limitMonitorCard importMonitor">
+            <div class="intelCardHead"><div><span>MDI / NIGHT LOAD</span><h3>5 kW Import Monitor</h3></div><svg class="uiIcon icon-import"><use href="#i-import"></use></svg></div>
+            <div class="limitBig"><b id="mdiCurrent">--</b><span id="mdiPct">--%</span></div>
+            <div class="limitTrack"><i id="mdiTrack"></i><em class="warn80"></em><em class="warn90"></em></div>
+            <div class="statQuad"><div><span>Today peak</span><b id="mdiTodayPeak">--</b><small id="mdiTodayTime">--</small></div><div><span>Month peak</span><b id="mdiMonthPeak">--</b><small id="mdiMonthTime">--</small></div><div><span>Headroom</span><b id="mdiHeadroom">--</b></div><div><span>Status</span><b id="mdiStatus">--</b></div></div>
+          </article>
+          <article class="limitMonitorCard exportMonitor">
+            <div class="intelCardHead"><div><span>DG / DAY EXPORT</span><h3>6 kW Export Monitor</h3></div><svg class="uiIcon icon-export"><use href="#i-export"></use></svg></div>
+            <div class="limitBig"><b id="dgCurrent">--</b><span id="dgPct">--%</span></div>
+            <div class="limitTrack"><i id="dgTrack"></i><em class="warn80"></em><em class="warn90"></em></div>
+            <div class="statQuad"><div><span>Today peak</span><b id="dgTodayPeak">--</b><small id="dgTodayTime">--</small></div><div><span>Month peak</span><b id="dgMonthPeak">--</b><small id="dgMonthTime">--</small></div><div><span>Headroom</span><b id="dgHeadroom">--</b></div><div><span>Status</span><b id="dgStatus">--</b></div></div>
+          </article>
+        </div>
+
+        <div class="intelligenceThreeGrid">
+          <article class="intelPanel batteryIntel"><div class="intelCardHead"><div><span>UPS STORAGE</span><h3>Battery Intelligence</h3></div><svg class="uiIcon icon-battery"><use href="#i-battery"></use></svg></div><div class="bigStat"><b id="batteryIntelSoc">--</b><span>SOC</span></div><dl><dt>Battery power</dt><dd id="batteryIntelPower">--</dd><dt>UPS load</dt><dd id="batteryIntelLoad">--</dd><dt>Configured capacity</dt><dd id="batteryIntelCapacity">--</dd><dt>Estimated backup</dt><dd id="batteryIntelRuntime">--</dd></dl><small class="panelFoot" id="batteryIntelNote">Runtime appears after BATTERY_CAPACITY_KWH is configured.</small></article>
+          <article class="intelPanel financeIntel"><div class="intelCardHead"><div><span>PKR PERFORMANCE</span><h3>Financial Snapshot</h3></div><svg class="uiIcon icon-smart"><use href="#i-money"></use></svg></div><div class="bigStat"><b id="financeSolarValue">--</b><span>solar value</span></div><dl><dt>Import cost</dt><dd id="financeImportCost">--</dd><dt>Export credit</dt><dd id="financeExportCredit">--</dd><dt>Estimated benefit</dt><dd id="financeBenefit">--</dd><dt>Net grid cost</dt><dd id="financeNetGrid">--</dd><dt>Grid dependency</dt><dd id="financeGridDependency">--</dd><dt>Self-consumption</dt><dd id="financeSelfConsumption">--</dd></dl><small class="panelFoot">Export credit uses EXPORT_RATE_PKR; default is zero until configured.</small></article>
+          <article class="intelPanel performanceIntel"><div class="intelCardHead"><div><span>SOLAR PERFORMANCE</span><h3>PV Analytics</h3></div><svg class="uiIcon icon-solar"><use href="#i-chart"></use></svg></div><div class="bigStat"><b id="perfYield">--</b><span>kWh/kWp</span></div><dl><dt>PV14000 yield</dt><dd id="perfPv14000Yield">--</dd><dt>PV9000 yield</dt><dd id="perfPv9000Yield">--</dd><dt>Live PV utilization</dt><dd id="perfLiveUtil">--</dd><dt>Today solar peak</dt><dd id="perfSolarPeak">--</dd><dt>Smart Load energy</dt><dd id="perfSmartEnergy">--</dd><dt>Clipping watch</dt><dd id="perfClipping">--</dd><dt>Target vs actual</dt><dd id="perfTarget">Not configured</dd></dl><small class="panelFoot" id="perfBestWorst">Best/worst days appear as history grows.</small></article>
+        </div>
+
+        <div class="intelligenceWideGrid">
+          <article class="timelinePanel"><div class="intelCardHead"><div><span>PAKISTAN TIME • TODAY</span><h3>Daily Energy Timeline</h3></div><svg class="uiIcon icon-neutral"><use href="#i-timeline"></use></svg></div><canvas id="dailyTimelineChart"></canvas><div class="timelineMilestones"><div><span>Solar start</span><b id="timelineSolarStart">--</b></div><div><span>Solar peak</span><b id="timelineSolarPeak">--</b></div><div><span>Demand peak</span><b id="timelineDemandPeak">--</b></div><div><span>Solar last seen</span><b id="timelineSolarEnd">--</b></div></div></article>
+          <article class="alertsPanel"><div class="intelCardHead"><div><span>RULE-BASED SUPERVISION</span><h3>Smart Alerts</h3></div><svg class="uiIcon icon-import"><use href="#i-alert"></use></svg></div><div id="smartAlerts" class="smartAlerts"><div class="smartAlert ok">Waiting for live telemetry…</div></div></article>
+        </div>
+
+        <article class="insightPanel"><div class="intelCardHead"><div><span>LIVE DECISION SUPPORT</span><h3>Smart Insights</h3></div><svg class="uiIcon icon-smart"><use href="#i-insight"></use></svg></div><div id="smartInsights" class="insightGrid"><div class="insightCard">Collecting site data…</div></div></article>
+      </div>
+    </section>
+
+    <section id="command" class="view">
+      <div class="pageShell commandShell">
+        <div class="pageTitle"><div><div class="eyebrow">MOBILE-FIRST COMMAND VIEW</div><h2 class="titleWithIcon"><svg class="uiIcon icon-neutral"><use href="#i-phone"></use></svg><span>Raja Fraz Live Command</span></h2><p>Fast read-only view for phone use. No remote switching or Tuya protection settings are changed here.</p></div><span class="statusPill good" id="commandMode">READ ONLY</span></div>
+        <div class="commandHero">
+          <div class="commandMetric solar"><span>Solar</span><b id="cmdSolar">--</b><small id="cmdSolarSub">11.14 kWp estate</small></div>
+          <div class="commandMetric load"><span>Demand</span><b id="cmdDemand">--</b><small>Upstream site demand</small></div>
+          <div class="commandMetric grid"><span>Physical Grid</span><b id="cmdGrid">--</b><small id="cmdGridMode">Tuya meter</small></div>
+          <div class="commandMetric battery"><span>UPS Battery</span><b id="cmdBattery">--</b><small id="cmdBatterySub">Matrix UPS</small></div>
+        </div>
+        <div class="commandGuardGrid">
+          <article><span>NIGHT IMPORT</span><b id="cmdImport">--</b><div class="commandTrack"><i id="cmdImportTrack"></i></div><small id="cmdImportHeadroom">5 kW target</small></article>
+          <article><span>DAY EXPORT</span><b id="cmdExport">--</b><div class="commandTrack"><i id="cmdExportTrack"></i></div><small id="cmdExportHeadroom">6 kW target</small></article>
+        </div>
+        <div class="commandSystems"><div><span>PV14000</span><b id="cmdPv14000">--</b><small id="cmdPv14000State">--</small></div><div><span>PV9000</span><b id="cmdPv9000">--</b><small id="cmdPv9000State">--</small></div><div><span>Matrix UPS</span><b id="cmdMatrix">--</b><small id="cmdMatrixState">--</small></div><div><span>Tuya Meter</span><b id="cmdTuya">--</b><small id="cmdTuyaState">--</small></div></div>
+        <article class="commandAlert"><span>ACTIVE MESSAGE</span><b id="cmdAlert">Waiting for telemetry…</b></article>
+      </div>
+    </section>
+
     <section id="charts" class="view">
       <div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">ONLINE HISTORICAL TELEMETRY</div><h2 class="titleWithIcon"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>Professional Performance Charts</span></h2><p>PostgreSQL-backed history for both solar inverters, the UPS and the combined estate.</p></div><div class="rangeButtons"><button data-hours="1">1H</button><button data-hours="6">6H</button><button class="active" data-hours="24">24H</button><button data-hours="168">7D</button><button data-hours="720">30D</button></div></div><article class="chartPanel fullChartPanel tall"><div class="chartHead"><div><span>MASTER POWER</span><h3 class="titleWithIcon"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>Solar • Site Demand • Utility Grid • Smart Load</span></h3></div></div><canvas id="fullChart"></canvas></article><div class="threeCharts"><article class="chartPanel"><div class="chartHead"><div><span>SYSTEM 01</span><h3 class="titleWithIcon"><svg class="uiIcon icon-pv14000" aria-hidden="true"><use href="#i-chart"></use></svg><span>PV14000 history</span></h3></div></div><canvas id="fullPv14000Chart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>SYSTEM 02</span><h3 class="titleWithIcon"><svg class="uiIcon icon-pv9000" aria-hidden="true"><use href="#i-chart"></use></svg><span>PV9000 history</span></h3></div></div><canvas id="fullPv9000Chart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>SYSTEM 03</span><h3 class="titleWithIcon"><svg class="uiIcon icon-ups" aria-hidden="true"><use href="#i-chart"></use></svg><span>Matrix UPS history</span></h3></div></div><canvas id="fullMatrixChart"></canvas></article></div></div>
     </section>
@@ -339,6 +424,6 @@
     </section>
   </main>
 
-  <script src="dashboard.js?v=25"></script>
+  <script src="dashboard.js?v=26"></script>
 </body>
 </html>

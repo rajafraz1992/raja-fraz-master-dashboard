@@ -1,3 +1,55 @@
+# Raja Fraz Master Solar Command Center - V26 NEXT LEVEL INTELLIGENCE
+
+V26 keeps the complete V25 dashboard, straight-ended gauges, V24 animated Energy Flow map, V22 professional icons, V21 Render auto-wake, V20 Tuya direction fix and the existing three-inverter topology. It adds a full read-only intelligence layer.
+
+## New in V26
+- **Energy Intelligence** tab with whole-site power balance.
+- **5 kW Night Import Guard** using the Tuya physical meter.
+- **6 kW Day Export Guard** using the Tuya physical meter.
+- **MDI / DG peak center** with live %, headroom, today peak and month peak.
+- **Tuya vs inverter reconciliation** for physical grid vs inverter-calculated grid.
+- **Smart Alerts** for limits, stale data, temperature, low battery and reconciliation differences.
+- **Battery Intelligence** with optional backup-runtime estimate.
+- **Financial Snapshot** with solar value, import cost, optional export credit, grid dependency and self-consumption.
+- **PV Performance Analytics** including kWh/kWp, live utilization and history-based peak/best/worst information.
+- **Daily Energy Timeline** in Pakistan time with solar/demand/grid history and milestones.
+- **Smart Insight Cards** for live decision support.
+- **Mobile-first Command** tab for a fast phone view.
+- **Energy Flow 2.0** balance ribbon above the animated topology map.
+- PostgreSQL history now also stores Tuya physical-meter live samples for true MDI/DG peak tracking from V26 onward.
+
+## Safety
+V26 is **monitoring/read-only**. It does not send Tuya breaker commands, change Smart Life protection settings, or write inverter settings.
+
+## Guardrail defaults
+```text
+Night import target: 5000 W
+Day export target:   6000 W
+Day watch window:    07:30 - 17:00 Asia/Karachi
+```
+
+## Optional Render settings
+The ZIP works with safe defaults. These values can be changed later in Render Environment:
+
+```text
+NIGHT_IMPORT_LIMIT_W=5000
+DAY_EXPORT_LIMIT_W=6000
+DAY_MODE_START=07:30
+DAY_MODE_END=17:00
+EXPORT_RATE_PKR=0
+BATTERY_CAPACITY_KWH=0
+TARGET_DAILY_YIELD_KWH_PER_KWP=0
+RECONCILIATION_ALERT_W=500
+ALERT_TEMP_C=65
+```
+
+`BATTERY_CAPACITY_KWH=0` means runtime estimation stays disabled until the real usable battery capacity is entered. `EXPORT_RATE_PKR=0` means no export credit is assumed. `TARGET_DAILY_YIELD_KWH_PER_KWP=0` means expected-vs-actual target comparison stays disabled.
+
+## Deployment
+Replace the complete contents of the existing Master Dashboard GitHub repository with this ZIP and redeploy on Render. Existing secrets and API URLs remain compatible. PostgreSQL is migrated automatically with `ADD COLUMN IF NOT EXISTS`; old history remains intact.
+
+---
+
 
 ## V25 — Straight Gauge Ends
 
