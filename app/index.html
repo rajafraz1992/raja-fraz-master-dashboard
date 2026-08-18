@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#082b43">
   <title>Raja Fraz Master Solar Command Center</title>
-  <link rel="stylesheet" href="styles.css?v=27">
+  <link rel="stylesheet" href="styles.css?v=29">
 </head>
 <body>
   <svg class="iconSprite" aria-hidden="true" focusable="false">
@@ -37,6 +37,7 @@
     <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 5h4M11 19h2"/></symbol>
     <symbol id="i-insight" viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M8 15c-1.3-1.1-2-2.8-2-4.6A6 6 0 0 1 18 10.4c0 1.8-.8 3.5-2 4.6-.8.7-1.2 1.3-1.4 2H9.4c-.2-.7-.6-1.3-1.4-2z"/></symbol>
     <symbol id="i-timeline" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="18" r="2"/></symbol>
+    <symbol id="i-ai" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><path d="M18.5 13l.9 2.6L22 16.5l-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9zM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8z"/></symbol>
   </svg>
 
   <nav class="topbar">
@@ -48,6 +49,7 @@
       <button class="navtab" data-view="combined"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-bolt"></use></svg><span>Combined</span></button>
       <button class="navtab" data-view="flow"><svg class="uiIcon icon-grid" aria-hidden="true"><use href="#i-systems"></use></svg><span>Energy Flow</span></button>
       <button class="navtab" data-view="intelligence"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-target"></use></svg><span>Intelligence</span></button>
+      <button class="navtab aiNav" data-view="ai"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-ai"></use></svg><span>AI Copilot</span></button>
       <button class="navtab" data-view="command"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-phone"></use></svg><span>Command</span></button>
       <button class="navtab" data-view="charts"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>Charts</span></button>
       <button class="navtab" data-view="totals"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-total"></use></svg><span>Totals</span></button>
@@ -393,6 +395,52 @@
       </div>
     </section>
 
+    <section id="ai" class="view">
+      <div class="pageShell aiShell">
+        <div class="pageTitle aiTitle">
+          <div><div class="eyebrow">LIVE TELEMETRY • AI ASSISTED • READ ONLY</div><h2 class="titleWithIcon"><svg class="uiIcon icon-smart"><use href="#i-ai"></use></svg><span>Raja Fraz Solar AI Copilot</span></h2><p>Ask about live solar, grid, UPS, faults, performance and maintenance. The AI automatically receives the latest Master telemetry snapshot.</p></div>
+          <div class="aiStatusStack"><span class="statusPill" id="aiStatusPill">CHECKING AI</span><small id="aiModelLabel">Model --</small></div>
+        </div>
+
+        <div class="aiOverviewGrid">
+          <article class="aiInfoCard"><span>LIVE CONTEXT</span><b id="aiContextSummary">Waiting for telemetry…</b><small>PV14000 • PV9000 • Matrix UPS • Tuya physical meter • analytics • today energy</small></article>
+          <article class="aiInfoCard safe"><span>SAFETY MODE</span><b>READ-ONLY COPILOT</b><small>No breaker switching, no inverter writes and no Smart Life protection changes.</small></article>
+          <article class="aiInfoCard"><span>PRIVACY / COST</span><b>ON-DEMAND ONLY</b><small>AI requests run only when you press a quick action or Send. API key stays on Render.</small></article>
+        </div>
+
+        <div class="aiWorkspace">
+          <aside class="aiSidebar">
+            <div class="aiSideHead"><span>QUICK DIAGNOSTICS</span><h3>Ask with one click</h3></div>
+            <button class="aiQuick" data-ai-prompt="Analyze the whole solar estate right now. Tell me what is normal, what needs attention, and the top 3 actions.">✦ Analyze system now</button>
+            <button class="aiQuick" data-ai-prompt="Give me a maintenance briefing for someone entering the inverter room now. Focus on offline or stale sources, temperatures, grid, UPS and safety.">🛠 Maintenance briefing</button>
+            <button class="aiQuick" data-ai-prompt="Check the 5 kW night import and 6 kW day export guardrails using current physical meter data. Am I near a limit?">⚡ Check grid-limit risk</button>
+            <button class="aiQuick" data-ai-prompt="Analyze PV14000 versus PV9000 performance today. Mention missing data or offline status before comparing.">☀ Compare solar inverters</button>
+            <button class="aiQuick" data-ai-prompt="Check Matrix UPS and battery status. Explain current load, SOC, charge/discharge state and any concern.">🔋 UPS & battery check</button>
+            <button class="aiQuick" data-ai-prompt="Explain any mismatch between the Tuya physical grid meter and the inverter-calculated utility grid reading. Give likely causes and checks.">↔ Meter reconciliation</button>
+            <div class="aiPinBox" id="aiPinBox" hidden>
+              <label for="aiPinInput">AI access PIN</label>
+              <div><input id="aiPinInput" type="password" inputmode="numeric" autocomplete="off" placeholder="Render AI_ACCESS_PIN"><button id="aiSavePin" type="button">Save</button></div>
+              <small>Stored only in this browser for requests to your own dashboard.</small>
+            </div>
+            <div class="aiSafetyNote"><b>⚠ Electrical safety</b><span>AI diagnoses and recommends. Mains protection/control changes remain manual and verified.</span></div>
+          </aside>
+
+          <section class="aiChatPanel">
+            <div class="aiChatHead"><div><span>RAJA FRAZ SOLAR COPILOT</span><h3>Live AI conversation</h3></div><button id="aiClear" type="button">Clear chat</button></div>
+            <div id="aiChat" class="aiChat" aria-live="polite">
+              <div class="aiMessage assistant"><div class="aiAvatar">AI</div><div class="aiBubble">AI Copilot is ready to analyze the Master Dashboard. Ask a question or use a quick diagnostic.</div></div>
+            </div>
+            <div id="aiTyping" class="aiTyping" hidden><i></i><i></i><i></i><span>Analyzing live telemetry…</span></div>
+            <form id="aiForm" class="aiComposer">
+              <textarea id="aiInput" rows="2" maxlength="1800" placeholder="Example: Why is PV9000 offline and what should maintenance check first?"></textarea>
+              <button id="aiSend" type="submit"><svg class="uiIcon"><use href="#i-ai"></use></svg><span>Ask AI</span></button>
+            </form>
+            <div class="aiFooter"><span id="aiUsage">No AI request yet</span><span>Live telemetry is attached server-side • AI has no control tools</span></div>
+          </section>
+        </div>
+      </div>
+    </section>
+
     <section id="command" class="view">
       <div class="pageShell commandShell">
         <div class="pageTitle"><div><div class="eyebrow">MOBILE-FIRST COMMAND VIEW</div><h2 class="titleWithIcon"><svg class="uiIcon icon-neutral"><use href="#i-phone"></use></svg><span>Raja Fraz Live Command</span></h2><p>Fast read-only view for phone use. No remote switching or Tuya protection settings are changed here.</p></div><span class="statusPill good" id="commandMode">READ ONLY</span></div>
@@ -424,6 +472,6 @@
     </section>
   </main>
 
-  <script src="dashboard.js?v=27"></script>
+  <script src="dashboard.js?v=29"></script>
 </body>
 </html>

@@ -1,3 +1,39 @@
+# Raja Fraz Master Dashboard V29 - AI COPILOT
+
+V29 keeps all V28 animated wall-display fixes and V26/V27 intelligence features, and adds a server-side **Solar AI Copilot** powered through the OpenAI Responses API.
+
+## New AI Copilot
+- New **AI Copilot** tab in the Master Dashboard.
+- Automatically attaches a fresh read-only telemetry snapshot: PV14000, PV9000, Matrix UPS, Tuya physical meter, guardrails, analytics and today energy.
+- One-click diagnostics for whole-site analysis, maintenance briefing, grid-limit risk, inverter comparison, UPS/battery health and meter reconciliation.
+- Multi-turn chat with a short browser session history.
+- AI is intentionally **read-only**: no breaker switching, no inverter writes, no Smart Life protection changes, and no RAW Tuya DP control tools.
+- API key stays server-side in Render; it is never embedded in HTML/JavaScript.
+- Requests are on-demand only and rate-limited.
+- OpenAI Responses calls set `store: false`.
+
+## Required Render settings for AI
+Add these under the Master Dashboard service → Environment:
+
+```text
+OPENAI_API_KEY=<your OpenAI API project key>
+AI_ACCESS_PIN=<a private PIN you choose>
+```
+
+Recommended/default settings included in `render.yaml`:
+
+```text
+OPENAI_MODEL=gpt-5.6
+AI_MAX_OUTPUT_TOKENS=900
+AI_RATE_LIMIT_REQUESTS=12
+```
+
+`AI_ACCESS_PIN` is strongly recommended because the Master Dashboard URL may be reachable from the public internet. The PIN is entered in the AI tab and stored only in that browser's local storage.
+
+The dashboard continues to work normally if `OPENAI_API_KEY` is not configured; only the AI tab remains disabled.
+
+---
+
 # Raja Fraz Master Dashboard V28 - Wall Display Flow Animation Fix
 
 V28 keeps all V27/V26 features and fixes the inverter-room `/display` energy-flow animation.

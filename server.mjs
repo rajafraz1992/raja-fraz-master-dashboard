@@ -55,6 +55,17 @@ const ALERT_TEMP_C = Math.max(30, Number(process.env.ALERT_TEMP_C || 65));
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const HISTORY_SAMPLE_SECONDS = Math.max(30, Number(process.env.HISTORY_SAMPLE_SECONDS || 60));
 
+// Optional AI Copilot. The API key never reaches the browser; all model calls
+// are made server-side. A dashboard PIN is strongly recommended because Render
+// dashboard URLs can be publicly reachable.
+const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || "").trim();
+const OPENAI_MODEL = String(process.env.OPENAI_MODEL || "gpt-5.6").trim() || "gpt-5.6";
+const AI_ACCESS_PIN = String(process.env.AI_ACCESS_PIN || "").trim();
+const AI_MAX_OUTPUT_TOKENS = Math.max(250, Math.min(1800, Number(process.env.AI_MAX_OUTPUT_TOKENS || 900)));
+const AI_RATE_LIMIT_REQUESTS = Math.max(3, Math.min(60, Number(process.env.AI_RATE_LIMIT_REQUESTS || 12)));
+const AI_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+const aiRateState = new Map();
+
 // Topology rules. Default values match the user's current wiring:
 // PV9000 output feeds Matrix AC input, therefore Matrix load is downstream and
 // must not be added again to site demand. Smart Load is directly on PV9000.
@@ -92,6 +103,66 @@ function json(res, code, body) {
   const text = JSON.stringify(body);
   res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   res.end(text);
+}
+function readJsonBody(req, maxBytes = 32768) {
+  return new Promise((resolveBody, rejectBody) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        const error = new Error("Request body is too large");
+        error.status = 413;
+        rejectBody(error);
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      try {
+        const text = Buffer.concat(chunks).toString("utf8").trim();
+        resolveBody(text ? JSON.parse(text) : {});
+      } catch {
+        const error = new Error("Invalid JSON body");
+        error.status = 400;
+        rejectBody(error);
+      }
+    });
+    req.on("error", rejectBody);
+  });
+}
+function aiClientIp(req) {
+  return String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
+}
+function consumeAiRateLimit(req) {
+  const key = aiClientIp(req);
+  const now = Date.now();
+  const current = aiRateState.get(key);
+  if (!current || now - current.startedAt >= AI_RATE_LIMIT_WINDOW_MS) {
+    aiRateState.set(key, { startedAt: now, count: 1 });
+    return { ok: true, remaining: AI_RATE_LIMIT_REQUESTS - 1 };
+  }
+  if (current.count >= AI_RATE_LIMIT_REQUESTS) {
+    return { ok: false, retryAfterSeconds: Math.max(1, Math.ceil((AI_RATE_LIMIT_WINDOW_MS - (now - current.startedAt)) / 1000)) };
+  }
+  current.count += 1;
+  return { ok: true, remaining: Math.max(0, AI_RATE_LIMIT_REQUESTS - current.count) };
+}
+function aiPinAccepted(req) {
+  if (!AI_ACCESS_PIN) return true;
+  return String(req.headers["x-ai-pin"] || "").trim() === AI_ACCESS_PIN;
+}
+function aiStatus() {
+  return {
+    ok: true,
+    configured: Boolean(OPENAI_API_KEY),
+    model: OPENAI_MODEL,
+    pinRequired: Boolean(AI_ACCESS_PIN),
+    readOnly: true,
+    maxOutputTokens: AI_MAX_OUTPUT_TOKENS,
+    note: OPENAI_API_KEY ? "AI Copilot is available." : "Add OPENAI_API_KEY in Render Environment to enable AI Copilot."
+  };
 }
 function num(v, fallback = 0) {
   const n = typeof v === "number" ? v : Number.parseFloat(String(v ?? "").replaceAll(",", ""));
@@ -1133,6 +1204,169 @@ async function fetchWeather() {
     return { ok: false, error: error.message };
   }
 }
+
+
+function compactAiSystem(system) {
+  if (!system) return null;
+  return {
+    key: system.key,
+    name: system.name,
+    online: system.online !== false,
+    solarW: num(system.solarW),
+    loadW: num(system.loadW ?? system.siteDemandW),
+    gridW: num(system.gridW),
+    smartLoadW: num(system.smartLoadW),
+    acInputW: num(system.acInputW),
+    batteryPct: system.batteryPct == null ? null : num(system.batteryPct),
+    batteryW: num(system.batteryW),
+    tempC: num(system.temp ?? system.tempC),
+    updatedAt: system.updatedAt || null
+  };
+}
+async function buildAiTelemetryContext() {
+  const [liveResult, analyticsResult, energyResult] = await Promise.allSettled([
+    fetchLive({ store: false, cacheMs: 4500 }),
+    fetchAnalytics(),
+    fetchEnergy("T")
+  ]);
+  const liveData = liveResult.status === "fulfilled" ? liveResult.value : null;
+  const analyticsData = analyticsResult.status === "fulfilled" ? analyticsResult.value : null;
+  const energyData = energyResult.status === "fulfilled" ? energyResult.value : null;
+  const meter = liveData?.meter || null;
+  return {
+    generatedAt: new Date().toISOString(),
+    timezone: "Asia/Karachi",
+    site: "Raja Fraz Solar Estate",
+    topology: {
+      installedPvKw: TOTAL_PV_INSTALLED_W / 1000,
+      pv14000: "Fronus Meta 10kW, 6.78 kWp PV",
+      pv9000: "Fronus Meta 6kW, 4.36 kWp PV; feeds Matrix UPS and Smart Load",
+      matrix: "Fronus Matrix 6kW used as PV-less UPS",
+      physicalMeter: "Tuya grid meter",
+      matrixLoadExcludedFromSiteDemandWhenContainedInPv9000: PV9000_LOAD_INCLUDES_UPS
+    },
+    live: liveData ? {
+      complete: liveData.complete,
+      connected: liveData.connected,
+      systems: {
+        pv14000: compactAiSystem(liveData.systems?.pv14000),
+        pv9000: compactAiSystem(liveData.systems?.pv9000),
+        matrix: compactAiSystem(liveData.systems?.matrix),
+        combined: compactAiSystem(liveData.systems?.combined)
+      },
+      physicalGrid: meter ? {
+        online: Boolean(meter.online), mode: meter.mode, powerW: num(meter.powerW),
+        importW: num(meter.importW), exportW: num(meter.exportW), voltage: meter.voltage,
+        currentA: meter.currentA, powerFactor: meter.powerFactor, temperatureC: meter.temperatureC,
+        importKwh: meter.importKwh, exportKwh: meter.exportKwh, updatedAt: meter.updatedAt,
+        directionSource: meter.directionSource
+      } : null,
+      errors: liveData.errors || {}
+    } : { error: liveResult.reason?.message || "Live telemetry unavailable" },
+    analytics: analyticsData || { error: analyticsResult.reason?.message || "Analytics unavailable" },
+    todayEnergy: energyData ? {
+      complete: energyData.complete,
+      pv14000: energyData.pv14000,
+      pv9000: energyData.pv9000,
+      matrix: energyData.matrix,
+      combined: energyData.combined,
+      errors: energyData.errors || {}
+    } : { error: energyResult.reason?.message || "Today energy unavailable" },
+    safety: {
+      aiHasControlTools: false,
+      masterIsReadOnly: true,
+      note: "AI can analyze and recommend only. It cannot switch Tuya, change breaker protection, or write inverter settings."
+    }
+  };
+}
+function cleanAiHistory(history) {
+  if (!Array.isArray(history)) return [];
+  return history.slice(-8).map((item) => ({
+    role: item?.role === "assistant" ? "assistant" : "user",
+    text: String(item?.text || "").trim().slice(0, 800)
+  })).filter((item) => item.text);
+}
+function extractOpenAiText(data) {
+  if (typeof data?.output_text === "string" && data.output_text.trim()) return data.output_text.trim();
+  const parts = [];
+  for (const item of Array.isArray(data?.output) ? data.output : []) {
+    for (const content of Array.isArray(item?.content) ? item.content : []) {
+      if ((content?.type === "output_text" || content?.type === "text") && typeof content.text === "string") parts.push(content.text);
+    }
+  }
+  return parts.join("\n").trim();
+}
+async function askSolarAi(message, history) {
+  const telemetry = await buildAiTelemetryContext();
+  const prior = cleanAiHistory(history);
+  const prompt = `You are the Raja Fraz Solar AI Copilot for a real solar/UPS monitoring dashboard in Pakistan.
+
+Rules:
+- Use the TELEMETRY SNAPSHOT below as the source of truth for current readings. If a source is offline/stale/missing, say that clearly and do not invent a value.
+- Understand the physical topology: PV14000 and PV9000 are the solar inverters; PV9000 feeds the Matrix UPS; Matrix is PV-less; Tuya is the independent physical utility meter.
+- Matrix downstream load can already be included in PV9000 load, so do not double-count it.
+- Tuya Consumption means grid import and Generate means grid export when that direction is confirmed.
+- The dashboard's guardrails are monitoring targets, not automatic control: night import 5 kW and day export 6 kW unless telemetry config says otherwise.
+- You are READ-ONLY. Never claim you switched a breaker, changed an inverter, changed Smart Life, or applied a protection threshold.
+- Do not provide guessed RAW Tuya DP bytes or unsafe live-mains write commands. For protection/control changes, recommend verification and a qualified electrician/installer where appropriate.
+- Be concise and practical. Prefer Roman Urdu/Hinglish for explanations unless the user asks in English. Use watts/kW/kWh and PKR clearly.
+- When diagnosing, separate: Observation, Likely cause, What to check, Urgency.
+
+RECENT CHAT:
+${prior.length ? prior.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join("\n") : "None"}
+
+TELEMETRY SNAPSHOT:
+${JSON.stringify(telemetry)}
+
+USER QUESTION:
+${String(message).trim().slice(0, 1800)}`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45000);
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+        "User-Agent": "Raja-Fraz-Master-AI/1.0"
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        input: prompt,
+        store: false,
+        max_output_tokens: AI_MAX_OUTPUT_TOKENS
+      })
+    });
+    const text = await response.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
+    if (!response.ok) {
+      const detail = data?.error?.message || data?.error || `OpenAI HTTP ${response.status}`;
+      const error = new Error(String(detail).slice(0, 500));
+      error.status = response.status;
+      throw error;
+    }
+    const answer = extractOpenAiText(data);
+    if (!answer) throw new Error("AI returned no text response");
+    return {
+      ok: true,
+      answer,
+      model: data?.model || OPENAI_MODEL,
+      responseId: data?.id || null,
+      readOnly: true,
+      telemetryAt: telemetry.generatedAt,
+      usage: data?.usage ? {
+        inputTokens: num(data.usage.input_tokens),
+        outputTokens: num(data.usage.output_tokens),
+        totalTokens: num(data.usage.total_tokens)
+      } : null
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 function staticPath(urlPath) {
   const clean = urlPath.split("?")[0];
   const rel = clean === "/" ? "index.html" : (clean === "/display" || clean === "/display/") ? "display.html" : decodeURIComponent(clean).replace(/^\/+/, "");
@@ -1155,6 +1389,22 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, stored, updatedAt: live.updatedAt, history: await historyStats() });
     }
     if (url.pathname === "/api/master/analytics") return json(res, 200, await fetchAnalytics());
+    if (url.pathname === "/api/master/ai/status") return json(res, 200, aiStatus());
+    if (url.pathname === "/api/master/ai/chat") {
+      if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
+      if (!OPENAI_API_KEY) return json(res, 503, { ok: false, error: "AI Copilot is not configured. Add OPENAI_API_KEY in Render Environment." });
+      if (!aiPinAccepted(req)) return json(res, 401, { ok: false, error: "AI PIN is incorrect." });
+      const rate = consumeAiRateLimit(req);
+      if (!rate.ok) {
+        res.setHeader("Retry-After", String(rate.retryAfterSeconds));
+        return json(res, 429, { ok: false, error: `AI request limit reached. Try again in about ${Math.ceil(rate.retryAfterSeconds / 60)} minute(s).` });
+      }
+      const body = await readJsonBody(req);
+      const message = String(body?.message || "").trim();
+      if (!message) return json(res, 400, { ok: false, error: "Message is required." });
+      if (message.length > 1800) return json(res, 400, { ok: false, error: "Message is too long (max 1800 characters)." });
+      return json(res, 200, await askSolarAi(message, body?.history));
+    }
     if (url.pathname === "/api/master/weather") return json(res, 200, await fetchWeather());
     if (url.pathname === "/api/master/tuya-energy-stats") return json(res, 200, await fetchTuyaEnergyStats());
     if (url.pathname === "/api/master/tuya-energy") return json(res, 200, await fetchTuyaEnergyRange({
@@ -1171,6 +1421,7 @@ const server = http.createServer(async (req, res) => {
       capacities: { pv14000PvW: PV14000_PV_INSTALLED_W, pv14000AcW: PV14000_AC_CAPACITY_W, pv9000PvW: PV9000_PV_INSTALLED_W, pv9000AcW: PV9000_AC_CAPACITY_W, matrixAcW: MATRIX_AC_CAPACITY_W, totalPvW: TOTAL_PV_INSTALLED_W },
       topology: { pv9000FeedsMatrix: true, matrixIsUps: true, smartLoadSource: "PV9000", pv9000LoadIncludesUps: PV9000_LOAD_INCLUDES_UPS, pv9000LoadIncludesSmart: PV9000_LOAD_INCLUDES_SMART },
       intelligence: { nightImportLimitW: NIGHT_IMPORT_LIMIT_W, dayExportLimitW: DAY_EXPORT_LIMIT_W, dayModeStart: DAY_MODE_START, dayModeEnd: DAY_MODE_END, batteryCapacityKwh: BATTERY_CAPACITY_KWH || null, exportRatePkr: EXPORT_RATE },
+      ai: { configured: Boolean(OPENAI_API_KEY), model: OPENAI_MODEL, pinRequired: Boolean(AI_ACCESS_PIN), readOnly: true },
       history: await historyStats()
     });
 
@@ -1186,7 +1437,7 @@ const server = http.createServer(async (req, res) => {
     });
     res.end(body);
   } catch (error) {
-    json(res, 500, { ok: false, error: error.message });
+    json(res, Number(error.status) || 500, { ok: false, error: error.message });
   }
 });
 

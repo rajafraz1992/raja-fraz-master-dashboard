@@ -16,6 +16,9 @@ let timelineHistory = { pv14000: [], pv9000: [], matrix: [], combined: [] };
 let todayEnergy = null;
 let connectionAlertCount = 0;
 let smartAlertCount = 0;
+let aiStatusData = null;
+let aiBusy = false;
+let aiHistory = [];
 
 function set(id, value) { const el = $(id); if (el) el.textContent = value; }
 function uiIcon(name, cls='') { return `<svg class="uiIcon ${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`; }
@@ -96,6 +99,63 @@ $$('#tuyaRangeMode button').forEach((button)=>button.addEventListener('click',()
 $('tuyaLoadPeriod')?.addEventListener('click',loadSelectedTuyaEnergy);
 $('tuyaDayPicker')?.addEventListener('change',loadSelectedTuyaEnergy);
 $('tuyaMonthPicker')?.addEventListener('change',loadSelectedTuyaEnergy);
+
+
+function aiPin(){return localStorage.getItem('rajaFrazAiPin')||'';}
+function setAiBusy(busy){
+  aiBusy=busy;
+  const send=$('aiSend'); if(send)send.disabled=busy||!aiStatusData?.configured;
+  $$('.aiQuick').forEach((b)=>b.disabled=busy||!aiStatusData?.configured);
+  if($('aiTyping'))$('aiTyping').hidden=!busy;
+}
+function addAiMessage(role,text,{error=false}={}){
+  const chat=$('aiChat'); if(!chat)return;
+  const wrap=document.createElement('div');wrap.className=`aiMessage ${role}${error?' error':''}`;
+  const avatar=document.createElement('div');avatar.className='aiAvatar';avatar.textContent=role==='user'?'YOU':'AI';
+  const bubble=document.createElement('div');bubble.className='aiBubble';bubble.textContent=String(text||'');
+  wrap.append(avatar,bubble);chat.appendChild(wrap);chat.scrollTop=chat.scrollHeight;
+}
+function renderAiLiveContext(){
+  const c=live?.systems?.combined||{};const meter=live?.meter;
+  const connected=finite(live?.connected);const solar=fmtPower(c.solarW);const demand=fmtPower(c.siteDemandW);
+  const grid=meter?.online?`${meter.mode||'UNKNOWN'} ${fmtPower(meter.powerW)}`:'Tuya offline';
+  set('aiContextSummary',`${connected}/3 sources • Solar ${solar} • Demand ${demand} • Grid ${grid}`);
+}
+async function loadAiStatus(){
+  try{
+    const r=await fetch('/api/master/ai/status',{cache:'no-store'});const d=await r.json();aiStatusData=d;
+    const pill=$('aiStatusPill');
+    if(d.configured){set('aiStatusPill','✦ AI READY');pill?.classList.add('aiReady');pill?.classList.remove('aiOff');}
+    else{set('aiStatusPill','AI NOT CONFIGURED');pill?.classList.add('aiOff');pill?.classList.remove('aiReady');}
+    set('aiModelLabel',`Model ${d.model||'--'}${d.pinRequired?' • PIN protected':''}`);
+    if($('aiPinBox'))$('aiPinBox').hidden=!d.pinRequired;
+    if(d.pinRequired&&$('aiPinInput'))$('aiPinInput').value=aiPin();
+    setAiBusy(false);
+    if(!d.configured)addAiMessage('assistant','AI is installed in V29 but not enabled yet. Add OPENAI_API_KEY in Render Environment, then redeploy/restart the service.');
+  }catch(error){
+    aiStatusData={configured:false};set('aiStatusPill','AI STATUS ERROR');$('aiStatusPill')?.classList.add('aiOff');set('aiModelLabel',error.message);setAiBusy(false);
+  }
+}
+async function askAi(message){
+  const q=String(message||'').trim();if(!q||aiBusy)return;
+  if(!aiStatusData?.configured){addAiMessage('assistant','AI is not configured on Render yet.',{error:true});return;}
+  addAiMessage('user',q);aiHistory.push({role:'user',text:q});aiHistory=aiHistory.slice(-8);setAiBusy(true);set('aiUsage','Analyzing current Master telemetry…');
+  try{
+    const headers={'Content-Type':'application/json'};const pin=aiPin();if(pin)headers['X-AI-PIN']=pin;
+    const r=await fetch('/api/master/ai/chat',{method:'POST',headers,body:JSON.stringify({message:q,history:aiHistory.slice(0,-1)})});
+    const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||`AI HTTP ${r.status}`);
+    addAiMessage('assistant',d.answer);aiHistory.push({role:'assistant',text:d.answer});aiHistory=aiHistory.slice(-8);
+    const u=d.usage;set('aiUsage',u?`${d.model||'AI'} • ${finite(u.totalTokens)} tokens • live snapshot ${new Date(d.telemetryAt||Date.now()).toLocaleTimeString('en-GB',{hour12:false})}`:`${d.model||'AI'} • response complete`);
+  }catch(error){
+    const msg=String(error.message||error);addAiMessage('assistant',msg,{error:true});set('aiUsage','AI request failed');
+    if(msg.toLowerCase().includes('pin'))$('aiPinInput')?.focus();
+  }finally{setAiBusy(false);}
+}
+$('aiForm')?.addEventListener('submit',(event)=>{event.preventDefault();const input=$('aiInput');const q=input?.value||'';if(input)input.value='';askAi(q);});
+$('aiInput')?.addEventListener('keydown',(event)=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();$('aiForm')?.requestSubmit();}});
+$$('.aiQuick').forEach((button)=>button.addEventListener('click',()=>askAi(button.dataset.aiPrompt||button.textContent)));
+$('aiClear')?.addEventListener('click',()=>{aiHistory=[];const chat=$('aiChat');if(chat)chat.innerHTML='';addAiMessage('assistant','Chat cleared. I will use a fresh live telemetry snapshot for your next question.');set('aiUsage','No AI request yet');});
+$('aiSavePin')?.addEventListener('click',()=>{const pin=String($('aiPinInput')?.value||'').trim();if(pin)localStorage.setItem('rajaFrazAiPin',pin);else localStorage.removeItem('rajaFrazAiPin');addAiMessage('assistant',pin?'AI PIN saved in this browser.':'AI PIN cleared from this browser.');});
 
 async function wakeMasterSources(){
   set('liveChip','◌ WAKING SOURCES…');
@@ -264,6 +324,7 @@ function render(){
   renderEnergyFlow(a,b,u,c,m);
   renderIntelligenceCenter();
   renderCommandView();
+  renderAiLiveContext();
   drawAll();
 }
 function setState(id,online){set(id,online?'ONLINE':'OFFLINE');$(id)?.classList.toggle('online',Boolean(online));}
@@ -681,10 +742,10 @@ function drawAll(){
 async function start(){
   initTuyaPickers();
   await wakeMasterSources();
-  await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadAnalytics(),loadTimelineHistory(),loadWeather(),loadTuyaQuickTotals()]);
+  await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadAnalytics(),loadTimelineHistory(),loadWeather(),loadTuyaQuickTotals(),loadAiStatus()]);
   if(!todayEnergy)todayEnergy=energy?.period==='T'?energy:null;
   await loadSelectedTuyaEnergy();
-  renderIntelligenceCenter(); renderCommandView(); drawDailyTimeline();
+  renderIntelligenceCenter(); renderCommandView(); renderAiLiveContext(); drawDailyTimeline();
   setInterval(loadLive,10000);
   setInterval(()=>loadHistory(activeHours),60000);
   setInterval(()=>loadEnergy(activeEnergyPeriod),60000);
