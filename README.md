@@ -1,3 +1,16 @@
+# Raja Fraz Master Dashboard V28 - Wall Display Flow Animation Fix
+
+V28 keeps all V27/V26 features and fixes the inverter-room `/display` energy-flow animation.
+
+## V28 fix
+- Fixes SVG class updates in Chrome/Android/TV browsers by using `setAttribute('class', ...)` instead of assigning `SVGElement.className`.
+- Active power paths now use bright moving energy pulses with stronger glow.
+- Direction reverses for grid export and battery discharge.
+- Inactive/offline paths remain dim, so maintenance staff can immediately see what is actually flowing.
+- No breaker, inverter, or Tuya protection setting is written or changed.
+
+---
+
 # Raja Fraz Master Solar Command Center - V27
 
 V27 keeps all V26 intelligence features and adds a dedicated **Inverter Room Display Mode** for an always-on monitor, Android TV box/stick, mini PC or kiosk browser.
