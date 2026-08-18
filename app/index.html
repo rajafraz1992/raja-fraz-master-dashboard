@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#082b43">
   <title>Raja Fraz Master Solar Command Center</title>
-  <link rel="stylesheet" href="styles.css?v=29">
+  <link rel="stylesheet" href="styles.css?v=31">
 </head>
 <body>
   <svg class="iconSprite" aria-hidden="true" focusable="false">
@@ -38,6 +38,7 @@
     <symbol id="i-insight" viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M8 15c-1.3-1.1-2-2.8-2-4.6A6 6 0 0 1 18 10.4c0 1.8-.8 3.5-2 4.6-.8.7-1.2 1.3-1.4 2H9.4c-.2-.7-.6-1.3-1.4-2z"/></symbol>
     <symbol id="i-timeline" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="18" r="2"/></symbol>
     <symbol id="i-ai" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><path d="M18.5 13l.9 2.6L22 16.5l-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9zM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></symbol>
   </svg>
 
   <nav class="topbar">
@@ -50,6 +51,7 @@
       <button class="navtab" data-view="flow"><svg class="uiIcon icon-grid" aria-hidden="true"><use href="#i-systems"></use></svg><span>Energy Flow</span></button>
       <button class="navtab" data-view="intelligence"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-target"></use></svg><span>Intelligence</span></button>
       <button class="navtab aiNav" data-view="ai"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-ai"></use></svg><span>AI Copilot</span></button>
+      <button class="navtab notifyNav" data-view="notifications"><svg class="uiIcon icon-import" aria-hidden="true"><use href="#i-bell"></use></svg><span>Alerts</span><b id="notifyNavBadge" hidden>!</b></button>
       <button class="navtab" data-view="command"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-phone"></use></svg><span>Command</span></button>
       <button class="navtab" data-view="charts"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>Charts</span></button>
       <button class="navtab" data-view="totals"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-total"></use></svg><span>Totals</span></button>
@@ -441,6 +443,57 @@
       </div>
     </section>
 
+    <section id="notifications" class="view">
+      <div class="pageShell notifyShell">
+        <div class="pageTitle notifyTitle">
+          <div><div class="eyebrow">MULTI-CHANNEL • RULE-BASED • READ ONLY</div><h2 class="titleWithIcon"><svg class="uiIcon icon-import"><use href="#i-bell"></use></svg><span>Solar Alert & Notification Center</span></h2><p>Automatic alerts for grid limits, inverter/meter outages, stale data, battery, temperature and meter reconciliation. Notifications never control the electrical system.</p></div>
+          <div class="notifyStatusStack"><span class="statusPill" id="notifyStatusPill">CHECKING</span><small id="notifyChannelSummary">Loading channels…</small></div>
+        </div>
+
+        <div class="notifyHeroGrid">
+          <article class="notifyHero"><span>ACTIVE POLICY</span><b>SMART SOLAR ALERTS</b><small id="notifyPolicySummary">5 kW night • 6 kW day • health • battery • temperature</small></article>
+          <article class="notifyHero secure"><span>SECURITY</span><b id="notifyPinState">PIN CHECKING</b><small>Uses NOTIFY_ACCESS_PIN or your existing AI_ACCESS_PIN.</small></article>
+          <article class="notifyHero"><span>DELIVERY</span><b id="notifyDeliveryState">CONFIGURE A CHANNEL</b><small>Telegram is easiest/free. Web Push, WhatsApp and SMS are optional.</small></article>
+        </div>
+
+        <div class="notifyChannelGrid">
+          <article class="notifyChannelCard webpush">
+            <div class="notifyChannelHead"><div class="notifyChannelIcon">🌐</div><div><span>WEB / BROWSER PUSH</span><h3>Chrome • Edge • Android</h3></div><b id="notifyBrowserState" class="notifyState">CHECKING</b></div>
+            <p>Enable local browser alerts immediately. With VAPID keys, alerts can also arrive when the dashboard tab is not open.</p>
+            <div class="notifyActions"><button id="notifyEnableBrowser" type="button">Enable browser alerts</button><button id="notifyDisableBrowser" type="button" class="secondary">Disable</button><button id="notifyTestBrowser" type="button" class="secondary">Send test</button></div>
+            <small id="notifyBrowserSub">Checking browser support…</small>
+          </article>
+
+          <article class="notifyChannelCard telegram">
+            <div class="notifyChannelHead"><div class="notifyChannelIcon">✈️</div><div><span>TELEGRAM BOT</span><h3>Fast & Free Remote Push</h3></div><b id="notifyTelegramState" class="notifyState">CHECKING</b></div>
+            <p>Recommended first remote channel. Configure a bot token and chat ID in Render, then alerts arrive on your phone.</p>
+            <div class="notifyActions"><button id="notifyTestTelegram" type="button">Send Telegram test</button></div>
+            <small>Render: TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID</small>
+          </article>
+
+          <article class="notifyChannelCard whatsapp">
+            <div class="notifyChannelHead"><div class="notifyChannelIcon">💬</div><div><span>WHATSAPP</span><h3>Twilio WhatsApp</h3></div><b id="notifyWhatsAppState" class="notifyState">CHECKING</b></div>
+            <p>Optional WhatsApp delivery through Twilio. Production proactive alerts may require an approved WhatsApp template.</p>
+            <div class="notifyActions"><button id="notifyTestWhatsApp" type="button">Send WhatsApp test</button></div>
+            <small>Twilio account + WhatsApp sender/recipient required.</small>
+          </article>
+
+          <article class="notifyChannelCard sms">
+            <div class="notifyChannelHead"><div class="notifyChannelIcon">📱</div><div><span>SMS</span><h3>Twilio SMS</h3></div><b id="notifySmsState" class="notifyState">CHECKING</b></div>
+            <p>Optional cellular SMS for critical alerts. Useful when mobile data is unavailable; carrier/Twilio charges can apply.</p>
+            <div class="notifyActions"><button id="notifyTestSms" type="button">Send SMS test</button></div>
+            <small>Render: TWILIO_ACCOUNT_SID / AUTH_TOKEN / SMS_FROM / SMS_TO</small>
+          </article>
+        </div>
+
+        <div class="notifyBottomGrid">
+          <article class="notifyPolicyCard"><div class="intelCardHead"><div><span>AUTOMATIC RULES</span><h3>What triggers a push?</h3></div><svg class="uiIcon icon-import"><use href="#i-alert"></use></svg></div><div id="notifyPolicy" class="notifyRules"><div>Loading alert policy…</div></div><div class="notifyActions wide"><button id="notifyCheckNow" type="button">Run alert check now</button><button id="notifyTestAll" type="button" class="secondary">Test all configured channels</button></div></article>
+          <article class="notifyHistoryCard"><div class="intelCardHead"><div><span>DELIVERY LOG</span><h3>Recent notifications</h3></div><svg class="uiIcon icon-neutral"><use href="#i-clock"></use></svg></div><div id="notifyHistory" class="notifyHistory"><div class="notifyHistoryEmpty">No notification history yet.</div></div></article>
+        </div>
+        <div id="notifyToast" class="notifyToast" hidden></div>
+      </div>
+    </section>
+
     <section id="command" class="view">
       <div class="pageShell commandShell">
         <div class="pageTitle"><div><div class="eyebrow">MOBILE-FIRST COMMAND VIEW</div><h2 class="titleWithIcon"><svg class="uiIcon icon-neutral"><use href="#i-phone"></use></svg><span>Raja Fraz Live Command</span></h2><p>Fast read-only view for phone use. No remote switching or Tuya protection settings are changed here.</p></div><span class="statusPill good" id="commandMode">READ ONLY</span></div>
@@ -472,6 +525,6 @@
     </section>
   </main>
 
-  <script src="dashboard.js?v=29"></script>
+  <script src="dashboard.js?v=31"></script>
 </body>
 </html>

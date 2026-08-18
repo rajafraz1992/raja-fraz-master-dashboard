@@ -19,6 +19,8 @@ let smartAlertCount = 0;
 let aiStatusData = null;
 let aiBusy = false;
 let aiHistory = [];
+let notifyStatusData = null;
+const localNotifySent = new Map();
 
 function set(id, value) { const el = $(id); if (el) el.textContent = value; }
 function uiIcon(name, cls='') { return `<svg class="uiIcon ${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`; }
@@ -78,6 +80,8 @@ $$('.navtab').forEach((button)=>button.addEventListener('click',()=>{
   $(button.dataset.view)?.classList.add('active');
   requestAnimationFrame(drawAll);
 }));
+const requestedView=new URLSearchParams(location.search).get('view');
+if(requestedView&&$(requestedView)){const btn=$(`.navtab[data-view="${requestedView.replace(/[^a-z0-9_-]/gi,'')}"]`);if(btn)btn.click();}
 $$('.rangeButtons button').forEach((button)=>button.addEventListener('click',()=>{
   $$('.rangeButtons button').forEach((b)=>b.classList.toggle('active',b===button));
   activeHours=Number(button.dataset.hours)||24;
@@ -108,11 +112,34 @@ function setAiBusy(busy){
   $$('.aiQuick').forEach((b)=>b.disabled=busy||!aiStatusData?.configured);
   if($('aiTyping'))$('aiTyping').hidden=!busy;
 }
+function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function aiInlineMarkdown(value){
+  let out=escapeHtml(value);
+  out=out.replace(/`([^`]+)`/g,'<code>$1</code>');
+  out=out.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  return out;
+}
+function renderAiMarkdown(value){
+  const lines=String(value||'').replace(/\r/g,'').split('\n');let html='',list=null,firstText=true;
+  const closeList=()=>{if(list){html+=`</${list}>`;list=null;}};
+  for(const raw of lines){const line=raw.trim();if(!line){closeList();continue;}
+    let m;if((m=line.match(/^###\s+(.+)/))){closeList();html+=`<h4>${aiInlineMarkdown(m[1])}</h4>`;firstText=false;continue;}
+    if((m=line.match(/^##\s+(.+)/))){closeList();html+=`<h3>${aiInlineMarkdown(m[1])}</h3>`;firstText=false;continue;}
+    if((m=line.match(/^#\s+(.+)/))){closeList();html+=`<div class="aiVerdict">${aiInlineMarkdown(m[1])}</div>`;firstText=false;continue;}
+    if(/^---+$/.test(line)){closeList();html+='<div class="aiDivider"></div>';continue;}
+    if((m=line.match(/^[-*]\s+(.+)/))){if(list!=='ul'){closeList();list='ul';html+='<ul>';}html+=`<li>${aiInlineMarkdown(m[1])}</li>`;firstText=false;continue;}
+    if((m=line.match(/^\d+[.)]\s+(.+)/))){if(list!=='ol'){closeList();list='ol';html+='<ol>';}html+=`<li>${aiInlineMarkdown(m[1])}</li>`;firstText=false;continue;}
+    if((m=line.match(/^>\s*(.+)/))){closeList();html+=`<blockquote>${aiInlineMarkdown(m[1])}</blockquote>`;firstText=false;continue;}
+    closeList();const rendered=aiInlineMarkdown(line);html+=firstText?`<div class="aiVerdict">${rendered}</div>`:`<p>${rendered}</p>`;firstText=false;
+  }
+  closeList();return html||'<p>No response text returned.</p>';
+}
 function addAiMessage(role,text,{error=false}={}){
   const chat=$('aiChat'); if(!chat)return;
   const wrap=document.createElement('div');wrap.className=`aiMessage ${role}${error?' error':''}`;
   const avatar=document.createElement('div');avatar.className='aiAvatar';avatar.textContent=role==='user'?'YOU':'AI';
-  const bubble=document.createElement('div');bubble.className='aiBubble';bubble.textContent=String(text||'');
+  const bubble=document.createElement('div');bubble.className='aiBubble';
+  if(role==='assistant'&&!error)bubble.innerHTML=renderAiMarkdown(text);else bubble.textContent=String(text||'');
   wrap.append(avatar,bubble);chat.appendChild(wrap);chat.scrollTop=chat.scrollHeight;
 }
 function renderAiLiveContext(){
@@ -131,7 +158,7 @@ async function loadAiStatus(){
     if($('aiPinBox'))$('aiPinBox').hidden=!d.pinRequired;
     if(d.pinRequired&&$('aiPinInput'))$('aiPinInput').value=aiPin();
     setAiBusy(false);
-    if(!d.configured)addAiMessage('assistant','AI is installed in V30 but not enabled yet. Add GEMINI_API_KEY in Render Environment, then redeploy/restart the service.');
+    if(!d.configured)addAiMessage('assistant','# 🤖 AI NOT CONFIGURED\nAdd **GEMINI_API_KEY** in Render Environment, then redeploy/restart the service.');
   }catch(error){
     aiStatusData={configured:false};set('aiStatusPill','AI STATUS ERROR');$('aiStatusPill')?.classList.add('aiOff');set('aiModelLabel',error.message);setAiBusy(false);
   }
@@ -156,6 +183,33 @@ $('aiInput')?.addEventListener('keydown',(event)=>{if(event.key==='Enter'&&!even
 $$('.aiQuick').forEach((button)=>button.addEventListener('click',()=>askAi(button.dataset.aiPrompt||button.textContent)));
 $('aiClear')?.addEventListener('click',()=>{aiHistory=[];const chat=$('aiChat');if(chat)chat.innerHTML='';addAiMessage('assistant','Chat cleared. I will use a fresh live telemetry snapshot for your next question.');set('aiUsage','No AI request yet');});
 $('aiSavePin')?.addEventListener('click',()=>{const pin=String($('aiPinInput')?.value||'').trim();if(pin)localStorage.setItem('rajaFrazAiPin',pin);else localStorage.removeItem('rajaFrazAiPin');addAiMessage('assistant',pin?'AI PIN saved in this browser.':'AI PIN cleared from this browser.');});
+
+function notifyPin(){return localStorage.getItem('rajaFrazAiPin')||'';}
+function notifyHeaders(){const h={'Content-Type':'application/json'};const pin=notifyPin();if(pin){h['X-Notify-Pin']=pin;h['X-AI-PIN']=pin;}return h;}
+function notifyToast(message,type='ok'){const el=$('notifyToast');if(!el)return;el.textContent=message;el.className=`notifyToast ${type}`;el.hidden=false;clearTimeout(notifyToast._timer);notifyToast._timer=setTimeout(()=>{el.hidden=true;},5000);}
+function setNotifyState(id,label,state=''){const el=$(id);if(!el)return;el.textContent=label;el.classList.remove('ready','partial','off');if(state)el.classList.add(state);}
+function base64UrlToUint8Array(value){const padding='='.repeat((4-value.length%4)%4);const base64=(value+padding).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(base64);return Uint8Array.from([...raw].map((c)=>c.charCodeAt(0)));}
+async function getPushRegistration(){if(!('serviceWorker'in navigator))throw new Error('Service Worker is not supported in this browser.');return navigator.serviceWorker.register('/sw.js',{scope:'/'});}
+async function currentPushSubscription(){if(!('serviceWorker'in navigator)||!('PushManager'in window))return null;const reg=await getPushRegistration();return reg.pushManager.getSubscription();}
+async function showLocalBrowserNotification(title,body,{tag='raja-fraz-local'}={}){if(!('Notification'in window))throw new Error('Browser notifications are not supported.');if(Notification.permission!=='granted')throw new Error('Browser notification permission is not granted.');const reg=await getPushRegistration();await reg.showNotification(title,{body,tag,icon:'/assets/raja-fraz-logo.jpeg',badge:'/assets/raja-fraz-logo.jpeg',data:{url:location.origin+'/?view=notifications'}});}
+async function loadNotificationHistory(){try{const r=await fetch('/api/master/notifications/history?limit=20',{cache:'no-store'});const d=await r.json();const box=$('notifyHistory');if(!box)return;if(!r.ok||!d.ok)throw new Error(d.error||`HTTP ${r.status}`);if(!Array.isArray(d.events)||!d.events.length){box.innerHTML='<div class="notifyHistoryEmpty">No notification history yet.</div>';return;}box.innerHTML=d.events.map((e)=>{const ts=new Date(e.created_at||Date.now()).toLocaleString('en-GB',{timeZone:'Asia/Karachi',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:false});const channels=Array.isArray(e.channels)?e.channels.map(x=>x.channel).filter(Boolean).join(', '):'';return `<div class="notifyHistoryItem ${escapeHtml(e.severity||'info')}"><b>${escapeHtml((e.is_recovery?'✅ ':'')+(e.title||'Alert'))}</b><span>${escapeHtml(ts)}${channels?` • ${escapeHtml(channels)}`:''}</span><p>${escapeHtml(e.message||'')}</p></div>`;}).join('');}catch(error){const box=$('notifyHistory');if(box)box.innerHTML=`<div class="notifyHistoryEmpty">History unavailable: ${escapeHtml(error.message)}</div>`;}}
+async function renderBrowserNotifyState(){const supported=('Notification'in window)&&('serviceWorker'in navigator);const localEnabled=localStorage.getItem('rajaFrazLocalNotifications')==='1';let sub=null;try{sub=await currentPushSubscription();}catch{}const remoteReady=Boolean(notifyStatusData?.channels?.webPush?.configured);if(!supported){setNotifyState('notifyBrowserState','UNSUPPORTED','off');set('notifyBrowserSub','This browser does not support required notification APIs.');return;}if(sub){setNotifyState('notifyBrowserState','PUSH ACTIVE','ready');set('notifyBrowserSub',`True Web Push subscribed • server subscriptions ${notifyStatusData?.channels?.webPush?.subscriptions??'--'}`);}else if(localEnabled&&Notification.permission==='granted'){setNotifyState('notifyBrowserState',remoteReady?'LOCAL ONLY':'LOCAL ONLY','partial');set('notifyBrowserSub',remoteReady?'Permission granted; click Enable again to create the server Push subscription.':'Local alerts work while this dashboard is open. Add VAPID keys for background Web Push.');}else{setNotifyState('notifyBrowserState',remoteReady?'READY TO ENABLE':'LOCAL AVAILABLE',remoteReady?'partial':'partial');set('notifyBrowserSub',remoteReady?'VAPID configured. Click Enable browser alerts.':'No VAPID keys yet; local browser alerts can still work while the dashboard is open.');}}
+function renderNotifyPolicy(){const p=notifyStatusData?.policy||{};const rules=[['🌙 Night import',`${Math.round(finite(p.nightImportLimitW,5000))} W • warning at 90%`],['☀ Day export',`${Math.round(finite(p.dayExportLimitW,6000))} W • warning at 90%`],['📡 Connectivity',`PV / Matrix / Tuya offline or >${Math.round(finite(p.staleSeconds,180))}s stale`],['🔋 Battery',`Alert below ${Math.round(finite(p.batteryLowPct,20))}% SOC`],['🌡 Temperature',`Alert above ${Math.round(finite(p.temperatureLimitC,65))}°C`],['↔ Meter match',`Alert above ${Math.round(finite(p.reconciliationAlertW,500))} W difference`],['⏱ Anti-spam',`${Math.round(finite(p.cooldownMinutes,30))} min repeat cooldown`],['🔒 Safety','Notifications are read-only; no breaker/inverter writes']];const box=$('notifyPolicy');if(box)box.innerHTML=rules.map(([a,b])=>`<div class="notifyRule"><b>${escapeHtml(a)}</b><small>${escapeHtml(b)}</small></div>`).join('');set('notifyPolicySummary',`${Math.round(finite(p.nightImportLimitW,5000))/1000} kW night • ${Math.round(finite(p.dayExportLimitW,6000))/1000} kW day • ${Math.round(finite(p.batteryLowPct,20))}% battery • ${Math.round(finite(p.temperatureLimitC,65))}°C temp`);}
+async function loadNotificationStatus(){try{const r=await fetch('/api/master/notifications/status',{cache:'no-store'});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||`HTTP ${r.status}`);notifyStatusData=d;const c=d.channels||{};const configured=['webPush','telegram','whatsapp','sms'].filter(k=>c[k]?.configured);set('notifyStatusPill',configured.length?'🔔 ALERTS READY':'SETUP AVAILABLE');$('notifyStatusPill')?.classList.toggle('good',configured.length>0);set('notifyChannelSummary',configured.length?`${configured.length}/4 remote channels configured`:'Local browser alerts available now');set('notifyDeliveryState',configured.length?`${configured.length} REMOTE CHANNEL${configured.length===1?'':'S'} READY`:'LOCAL WEB ALERTS ONLY');set('notifyPinState',d.pinRequired?'PIN PROTECTED':'NO PIN SET');setNotifyState('notifyTelegramState',c.telegram?.configured?'READY':'SETUP','telegram'&&c.telegram?.configured?'ready':'partial');setNotifyState('notifyWhatsAppState',c.whatsapp?.configured?'READY':'SETUP',c.whatsapp?.configured?'ready':'partial');setNotifyState('notifySmsState',c.sms?.configured?'READY':'SETUP',c.sms?.configured?'ready':'partial');if($('notifyTestTelegram'))$('notifyTestTelegram').disabled=!c.telegram?.configured;if($('notifyTestWhatsApp'))$('notifyTestWhatsApp').disabled=!c.whatsapp?.configured;if($('notifyTestSms'))$('notifyTestSms').disabled=!c.sms?.configured;renderNotifyPolicy();await renderBrowserNotifyState();await loadNotificationHistory();$('notifyNavBadge')?.toggleAttribute('hidden',false);if($('notifyNavBadge'))$('notifyNavBadge').textContent=configured.length?String(configured.length):'•';}catch(error){notifyStatusData=null;set('notifyStatusPill','STATUS ERROR');set('notifyChannelSummary',error.message);}}
+async function enableBrowserNotifications(){try{if(!('Notification'in window))throw new Error('Browser notifications are not supported here.');const permission=Notification.permission==='granted'?'granted':await Notification.requestPermission();if(permission!=='granted')throw new Error('Notification permission was not granted.');localStorage.setItem('rajaFrazLocalNotifications','1');const remote=notifyStatusData?.channels?.webPush;if(remote?.configured&&remote.publicKey&&('PushManager'in window)){const reg=await getPushRegistration();let sub=await reg.pushManager.getSubscription();if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:base64UrlToUint8Array(remote.publicKey)});const r=await fetch('/api/master/notifications/subscribe',{method:'POST',headers:notifyHeaders(),body:JSON.stringify({subscription:sub.toJSON()})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||`Subscribe HTTP ${r.status}`);notifyToast('True Web Push enabled on this browser.','ok');}else notifyToast('Local browser alerts enabled. Add VAPID keys later for background Web Push.','ok');await loadNotificationStatus();}catch(error){notifyToast(error.message,'error');}}
+async function disableBrowserNotifications(){try{localStorage.removeItem('rajaFrazLocalNotifications');const sub=await currentPushSubscription();if(sub){await fetch('/api/master/notifications/unsubscribe',{method:'POST',headers:notifyHeaders(),body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});await sub.unsubscribe();}notifyToast('Browser alerts disabled on this device.','ok');await loadNotificationStatus();}catch(error){notifyToast(error.message,'error');}}
+async function testNotification(channel){try{if(channel==='webPush'&&!notifyStatusData?.channels?.webPush?.configured){await showLocalBrowserNotification('🔔 Raja Fraz Solar Test','Local browser notifications are working.',{tag:'raja-fraz-test'});notifyToast('Local browser notification sent.','ok');return;}const r=await fetch('/api/master/notifications/test',{method:'POST',headers:notifyHeaders(),body:JSON.stringify({channel})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||`Test HTTP ${r.status}`);const failed=(d.results||[]).filter(x=>x.ok===false&&!x.skipped);notifyToast(failed.length?`Test completed with ${failed.length} channel error(s).`:'Notification test sent.','ok');await loadNotificationHistory();}catch(error){notifyToast(error.message,'error');}}
+async function runNotificationCheck(){try{const r=await fetch('/api/master/notifications/check',{method:'POST',headers:notifyHeaders(),body:'{}'});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||`Check HTTP ${r.status}`);notifyToast(`Alert check complete • ${finite(d.activeAlerts)} active condition(s).`,'ok');await loadNotificationHistory();}catch(error){notifyToast(error.message,'error');}}
+function localAlertKey(alert){let h=0;for(const ch of String(alert.level+'|'+alert.text)){h=((h<<5)-h)+ch.charCodeAt(0);h|=0;}return `rajaFrazLocalAlert:${h}`;}
+function maybeLocalBrowserAlerts(alerts){if(localStorage.getItem('rajaFrazLocalNotifications')!=='1'||!('Notification'in window)||Notification.permission!=='granted')return;const cooldown=(finite(notifyStatusData?.policy?.cooldownMinutes,30))*60*1000;for(const alert of alerts.filter(a=>a.level==='danger'||a.level==='warn')){const key=localAlertKey(alert);const prev=Number(localStorage.getItem(key)||0);if(Date.now()-prev<cooldown)continue;localStorage.setItem(key,String(Date.now()));showLocalBrowserNotification(alert.level==='danger'?'🚨 Raja Fraz Solar Alert':'⚠️ Raja Fraz Solar Watch',alert.text,{tag:key.slice(-24)}).catch(()=>{});}}
+$('notifyEnableBrowser')?.addEventListener('click',enableBrowserNotifications);
+$('notifyDisableBrowser')?.addEventListener('click',disableBrowserNotifications);
+$('notifyTestBrowser')?.addEventListener('click',()=>testNotification('webPush'));
+$('notifyTestTelegram')?.addEventListener('click',()=>testNotification('telegram'));
+$('notifyTestWhatsApp')?.addEventListener('click',()=>testNotification('whatsapp'));
+$('notifyTestSms')?.addEventListener('click',()=>testNotification('sms'));
+$('notifyTestAll')?.addEventListener('click',()=>testNotification('all'));
+$('notifyCheckNow')?.addEventListener('click',runNotificationCheck);
 
 async function wakeMasterSources(){
   set('liveChip','◌ WAKING SOURCES…');
@@ -608,7 +662,7 @@ function renderSmartAlerts(ctx){
   if(u?.batteryPct!=null&&finite(u.batteryPct)<20)add('warn',`UPS battery SOC is low at ${Math.round(finite(u.batteryPct))}%.`);
   const staleLimit=180000;for(const [name,obj] of [['PV14000',a],['PV9000',b],['Matrix',u],['Tuya',m]])if(obj?.updatedAt&&Date.now()-finite(obj.updatedAt)>staleLimit)add('warn',`${name} telemetry is stale (${ageText(obj.updatedAt)}).`);
   if(!alerts.length)add('ok','All smart guardrails are normal. No threshold, temperature or reconciliation alert is active.',false);
-  const box=$('smartAlerts');if(box)box.innerHTML=alerts.map(x=>`<div class="smartAlert ${x.level}">${x.text}</div>`).join('');smartAlertCount=counted.length;updateAlertBadge();
+  const box=$('smartAlerts');if(box)box.innerHTML=alerts.map(x=>`<div class="smartAlert ${x.level}">${x.text}</div>`).join('');smartAlertCount=counted.length;updateAlertBadge();maybeLocalBrowserAlerts(alerts);
 }
 
 function renderSmartInsights(ctx){
@@ -742,7 +796,7 @@ function drawAll(){
 async function start(){
   initTuyaPickers();
   await wakeMasterSources();
-  await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadAnalytics(),loadTimelineHistory(),loadWeather(),loadTuyaQuickTotals(),loadAiStatus()]);
+  await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadAnalytics(),loadTimelineHistory(),loadWeather(),loadTuyaQuickTotals(),loadAiStatus(),loadNotificationStatus()]);
   if(!todayEnergy)todayEnergy=energy?.period==='T'?energy:null;
   await loadSelectedTuyaEnergy();
   renderIntelligenceCenter(); renderCommandView(); renderAiLiveContext(); drawDailyTimeline();
@@ -755,5 +809,6 @@ async function start(){
   setInterval(loadTuyaQuickTotals,300000);
   setInterval(loadWeather,600000);
 }
+setInterval(()=>{loadNotificationStatus().catch(()=>{});},60000);
 window.addEventListener('resize',()=>requestAnimationFrame(()=>{drawAll();drawDailyTimeline();}));
 start();

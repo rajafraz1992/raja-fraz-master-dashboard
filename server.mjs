@@ -4,6 +4,7 @@ import { extname, join, resolve, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import pg from "pg";
+import webpush from "web-push";
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -68,6 +69,44 @@ const AI_MAX_OUTPUT_TOKENS = Math.max(250, Math.min(1800, Number(process.env.AI_
 const AI_RATE_LIMIT_REQUESTS = Math.max(3, Math.min(60, Number(process.env.AI_RATE_LIMIT_REQUESTS || 12)));
 const AI_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const aiRateState = new Map();
+
+// Optional multi-channel alert delivery. Telegram is the easiest free remote
+// channel. Twilio can deliver SMS and WhatsApp when its credentials/senders are
+// configured. Standards-based Web Push uses VAPID and works independently of
+// Gemini/OpenAI. No notification channel is allowed to control electrical gear.
+const NOTIFY_ACCESS_PIN = String(process.env.NOTIFY_ACCESS_PIN || AI_ACCESS_PIN || "").trim();
+const ALERT_COOLDOWN_MINUTES = Math.max(2, Number(process.env.ALERT_COOLDOWN_MINUTES || 30));
+const ALERT_COOLDOWN_MS = ALERT_COOLDOWN_MINUTES * 60 * 1000;
+const ALERT_STALE_SECONDS = Math.max(60, Number(process.env.ALERT_STALE_SECONDS || 180));
+const BATTERY_LOW_PCT = Math.max(5, Math.min(80, Number(process.env.BATTERY_LOW_PCT || 20)));
+const NOTIFY_DASHBOARD_URL = String(process.env.NOTIFY_DASHBOARD_URL || "https://raja-fraz-master-dashboard.onrender.com").trim();
+
+const TELEGRAM_BOT_TOKEN = String(process.env.TELEGRAM_BOT_TOKEN || "").trim();
+const TELEGRAM_CHAT_ID = String(process.env.TELEGRAM_CHAT_ID || "").trim();
+
+const TWILIO_ACCOUNT_SID = String(process.env.TWILIO_ACCOUNT_SID || "").trim();
+const TWILIO_AUTH_TOKEN = String(process.env.TWILIO_AUTH_TOKEN || "").trim();
+const TWILIO_SMS_FROM = String(process.env.TWILIO_SMS_FROM || "").trim();
+const TWILIO_SMS_TO = String(process.env.TWILIO_SMS_TO || "").trim();
+const TWILIO_WHATSAPP_FROM = String(process.env.TWILIO_WHATSAPP_FROM || "").trim();
+const TWILIO_WHATSAPP_TO = String(process.env.TWILIO_WHATSAPP_TO || "").trim();
+const TWILIO_WHATSAPP_CONTENT_SID = String(process.env.TWILIO_WHATSAPP_CONTENT_SID || "").trim();
+
+const VAPID_PUBLIC_KEY = String(process.env.VAPID_PUBLIC_KEY || "").trim();
+const VAPID_PRIVATE_KEY = String(process.env.VAPID_PRIVATE_KEY || "").trim();
+const VAPID_SUBJECT = String(process.env.VAPID_SUBJECT || NOTIFY_DASHBOARD_URL).trim();
+let webPushConfigured = false;
+try {
+  if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    webPushConfigured = true;
+  }
+} catch (error) {
+  console.error("Web Push VAPID configuration:", error.message);
+}
+const pushSubscriptionsMemory = new Map();
+const alertDeliveryState = new Map();
+let notificationCheckInFlight = null;
 
 // Topology rules. Default values match the user's current wiring:
 // PV9000 output feeds Matrix AC input, therefore Matrix load is downstream and
@@ -840,6 +879,23 @@ async function initDb() {
       ALTER TABLE master_samples_v3 ADD COLUMN IF NOT EXISTS meter_pf DOUBLE PRECISION;
       ALTER TABLE master_samples_v3 ADD COLUMN IF NOT EXISTS meter_temp_c DOUBLE PRECISION;
       CREATE INDEX IF NOT EXISTS master_samples_v3_captured_at_idx ON master_samples_v3 (captured_at DESC);
+      CREATE TABLE IF NOT EXISTS master_push_subscriptions_v1 (
+        endpoint TEXT PRIMARY KEY,
+        subscription JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS master_notification_events_v1 (
+        id BIGSERIAL PRIMARY KEY,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        alert_key TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        channels JSONB NOT NULL DEFAULT '[]'::jsonb,
+        is_recovery BOOLEAN NOT NULL DEFAULT FALSE
+      );
+      CREATE INDEX IF NOT EXISTS master_notification_events_v1_created_at_idx ON master_notification_events_v1 (created_at DESC);
     `);
     dbReady = true;
     return true;
@@ -1228,6 +1284,289 @@ async function fetchWeather() {
 }
 
 
+function notificationPinAccepted(req) {
+  if (!NOTIFY_ACCESS_PIN) return true;
+  const supplied = String(req.headers["x-notify-pin"] || req.headers["x-ai-pin"] || "").trim();
+  return supplied === NOTIFY_ACCESS_PIN;
+}
+function normalizeWhatsAppAddress(value) {
+  const v = String(value || "").trim();
+  if (!v) return "";
+  return v.startsWith("whatsapp:") ? v : `whatsapp:${v}`;
+}
+function notificationChannelFlags() {
+  return {
+    webPush: webPushConfigured,
+    telegram: Boolean(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID),
+    whatsapp: Boolean(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_WHATSAPP_FROM && TWILIO_WHATSAPP_TO),
+    sms: Boolean(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_SMS_FROM && TWILIO_SMS_TO)
+  };
+}
+async function countPushSubscriptions() {
+  if (pool && dbReady) {
+    try {
+      const r = await pool.query("SELECT COUNT(*)::int AS count FROM master_push_subscriptions_v1");
+      return Number(r.rows?.[0]?.count || 0);
+    } catch {}
+  }
+  return pushSubscriptionsMemory.size;
+}
+async function getPushSubscriptions() {
+  if (pool && dbReady) {
+    try {
+      const r = await pool.query("SELECT endpoint, subscription FROM master_push_subscriptions_v1 ORDER BY updated_at DESC");
+      return r.rows.map((row) => row.subscription).filter(Boolean);
+    } catch (error) {
+      console.error("Push subscription read:", error.message);
+    }
+  }
+  return [...pushSubscriptionsMemory.values()];
+}
+async function savePushSubscription(subscription) {
+  const endpoint = String(subscription?.endpoint || "").trim();
+  const p256dh = String(subscription?.keys?.p256dh || "").trim();
+  const auth = String(subscription?.keys?.auth || "").trim();
+  if (!endpoint || !p256dh || !auth) {
+    const error = new Error("Invalid Web Push subscription");
+    error.status = 400;
+    throw error;
+  }
+  const clean = { endpoint, expirationTime: subscription.expirationTime ?? null, keys: { p256dh, auth } };
+  pushSubscriptionsMemory.set(endpoint, clean);
+  alertDeliveryState.clear();
+  if (pool && dbReady) {
+    await pool.query(`
+      INSERT INTO master_push_subscriptions_v1 (endpoint, subscription, updated_at)
+      VALUES ($1, $2::jsonb, NOW())
+      ON CONFLICT (endpoint) DO UPDATE SET subscription = EXCLUDED.subscription, updated_at = NOW()
+    `, [endpoint, JSON.stringify(clean)]);
+  }
+  return clean;
+}
+async function deletePushSubscription(endpoint) {
+  const key = String(endpoint || "").trim();
+  if (!key) return false;
+  pushSubscriptionsMemory.delete(key);
+  if (pool && dbReady) {
+    try { await pool.query("DELETE FROM master_push_subscriptions_v1 WHERE endpoint = $1", [key]); } catch {}
+  }
+  return true;
+}
+async function notificationStatus() {
+  const flags = notificationChannelFlags();
+  return {
+    ok: true,
+    pinRequired: Boolean(NOTIFY_ACCESS_PIN),
+    channels: {
+      webPush: { configured: flags.webPush, subscriptions: await countPushSubscriptions(), publicKey: flags.webPush ? VAPID_PUBLIC_KEY : null },
+      telegram: { configured: flags.telegram },
+      whatsapp: { configured: flags.whatsapp, templateConfigured: Boolean(TWILIO_WHATSAPP_CONTENT_SID) },
+      sms: { configured: flags.sms }
+    },
+    policy: {
+      cooldownMinutes: ALERT_COOLDOWN_MINUTES,
+      staleSeconds: ALERT_STALE_SECONDS,
+      batteryLowPct: BATTERY_LOW_PCT,
+      nightImportLimitW: NIGHT_IMPORT_LIMIT_W,
+      dayExportLimitW: DAY_EXPORT_LIMIT_W,
+      temperatureLimitC: ALERT_TEMP_C,
+      reconciliationAlertW: RECONCILIATION_ALERT_W
+    },
+    note: "Alerts are monitoring-only. Notification delivery never sends a Tuya or inverter control command."
+  };
+}
+function alertIcon(severity, recovery = false) {
+  if (recovery) return "✅";
+  if (severity === "critical") return "🚨";
+  if (severity === "warning") return "⚠️";
+  return "ℹ️";
+}
+function formatNotificationText(alert) {
+  const icon = alertIcon(alert.severity, alert.isRecovery);
+  const clock = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Karachi", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+  const lines = [
+    `${icon} RAJA FRAZ SOLAR`,
+    String(alert.title || "Solar alert"),
+    String(alert.message || "").trim(),
+    alert.action ? `Action: ${alert.action}` : "",
+    `PKT ${clock}`
+  ].filter(Boolean);
+  return lines.join("\n").slice(0, 1400);
+}
+async function sendTelegramAlert(alert) {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return { channel: "telegram", skipped: true, reason: "not configured" };
+  const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: formatNotificationText(alert), disable_web_page_preview: true })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false) throw new Error(data?.description || `Telegram HTTP ${response.status}`);
+  return { channel: "telegram", ok: true, messageId: data?.result?.message_id || null };
+}
+async function sendTwilioForm(params) {
+  const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(TWILIO_ACCOUNT_SID)}/Messages.json`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`, "utf8").toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams(params)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.message || `Twilio HTTP ${response.status}`);
+  return data;
+}
+async function sendSmsAlert(alert) {
+  if (!notificationChannelFlags().sms) return { channel: "sms", skipped: true, reason: "not configured" };
+  const data = await sendTwilioForm({ To: TWILIO_SMS_TO, From: TWILIO_SMS_FROM, Body: formatNotificationText(alert) });
+  return { channel: "sms", ok: true, sid: data?.sid || null };
+}
+async function sendWhatsAppAlert(alert) {
+  if (!notificationChannelFlags().whatsapp) return { channel: "whatsapp", skipped: true, reason: "not configured" };
+  const params = { To: normalizeWhatsAppAddress(TWILIO_WHATSAPP_TO), From: normalizeWhatsAppAddress(TWILIO_WHATSAPP_FROM) };
+  if (TWILIO_WHATSAPP_CONTENT_SID) {
+    params.ContentSid = TWILIO_WHATSAPP_CONTENT_SID;
+    params.ContentVariables = JSON.stringify({ "1": formatNotificationText(alert) });
+  } else {
+    params.Body = formatNotificationText(alert);
+  }
+  const data = await sendTwilioForm(params);
+  return { channel: "whatsapp", ok: true, sid: data?.sid || null };
+}
+async function sendWebPushAlert(alert) {
+  if (!webPushConfigured) return { channel: "webPush", skipped: true, reason: "VAPID not configured" };
+  const subscriptions = await getPushSubscriptions();
+  if (!subscriptions.length) return { channel: "webPush", skipped: true, reason: "no subscribed browsers" };
+  const payload = JSON.stringify({
+    title: `${alertIcon(alert.severity, alert.isRecovery)} ${alert.title || "Raja Fraz Solar"}`,
+    body: String(alert.message || "Solar alert"),
+    action: alert.action || "",
+    severity: alert.severity || "info",
+    tag: `raja-fraz-${alert.key || "solar"}`,
+    url: NOTIFY_DASHBOARD_URL
+  });
+  let sent = 0;
+  const failed = [];
+  for (const subscription of subscriptions) {
+    try {
+      await webpush.sendNotification(subscription, payload, { TTL: 3600, urgency: alert.severity === "critical" ? "high" : "normal", topic: String(alert.key || "solar").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) || "solar" });
+      sent += 1;
+    } catch (error) {
+      failed.push({ endpoint: subscription.endpoint, statusCode: error?.statusCode || null, message: error?.message || String(error) });
+      if (error?.statusCode === 404 || error?.statusCode === 410) await deletePushSubscription(subscription.endpoint);
+    }
+  }
+  return { channel: "webPush", ok: sent > 0, sent, failed: failed.length };
+}
+async function logNotificationEvent(alert, results) {
+  if (!pool || !dbReady) return;
+  try {
+    await pool.query(`
+      INSERT INTO master_notification_events_v1 (alert_key, severity, title, message, channels, is_recovery)
+      VALUES ($1,$2,$3,$4,$5::jsonb,$6)
+    `, [String(alert.key || "alert"), String(alert.severity || "info"), String(alert.title || "Solar alert"), String(alert.message || ""), JSON.stringify(results || []), Boolean(alert.isRecovery)]);
+  } catch (error) {
+    console.error("Notification history insert:", error.message);
+  }
+}
+async function dispatchNotifications(alert, { channels = null } = {}) {
+  const requested = Array.isArray(channels) && channels.length ? new Set(channels) : null;
+  const jobs = [];
+  const add = (name, fn) => { if (!requested || requested.has(name)) jobs.push(fn().catch((error) => ({ channel: name, ok: false, error: error.message }))); };
+  add("webPush", () => sendWebPushAlert(alert));
+  add("telegram", () => sendTelegramAlert(alert));
+  add("whatsapp", () => sendWhatsAppAlert(alert));
+  add("sms", () => sendSmsAlert(alert));
+  const results = await Promise.all(jobs);
+  await logNotificationEvent(alert, results);
+  return results;
+}
+function buildLiveAlerts(live) {
+  const alerts = [];
+  const add = (key, severity, title, message, action = "") => alerts.push({ key, severity, title, message, action });
+  const s = live?.systems || {};
+  const a = s.pv14000 || null, b = s.pv9000 || null, u = s.matrix || null, c = s.combined || {};
+  const m = live?.meter || null;
+  if (!a) add("pv14000-offline", "critical", "PV14000 OFFLINE", "Fronus Meta 10 kW telemetry is unavailable.", "Check inverter/Wi-Fi/API path.");
+  if (PV9000_API_BASE && !b) add("pv9000-offline", "warning", "PV9000 OFFLINE", "Fronus Meta 6 kW telemetry is unavailable.", "Check inverter Wi-Fi and PV9000 API service.");
+  if (!u) add("matrix-offline", "critical", "MATRIX UPS OFFLINE", "Matrix UPS telemetry is unavailable.", "Check UPS communication before maintenance decisions.");
+  if (!m?.online) add("tuya-offline", "critical", "TUYA GRID METER OFFLINE", "Physical utility meter data is unavailable, so grid guardrails cannot be trusted.", "Check Tuya cloud/device connectivity.");
+
+  const clock = pakistanClock();
+  if (m?.online) {
+    const mode = String(m.mode || "").toUpperCase();
+    const importW = num(m.importW), exportW = num(m.exportW);
+    if (!clock.dayMode && mode === "IMPORTING") {
+      const pct = importW / NIGHT_IMPORT_LIMIT_W * 100;
+      if (pct >= 100) add("night-import-over", "critical", "NIGHT IMPORT LIMIT EXCEEDED", `${Math.round(importW)} W import is above the ${Math.round(NIGHT_IMPORT_LIMIT_W)} W target.`, "Reduce non-essential load and inspect the active load mix.");
+      else if (pct >= 90) add("night-import-watch", "warning", "NIGHT IMPORT NEAR LIMIT", `${Math.round(importW)} W import is ${pct.toFixed(0)}% of the ${Math.round(NIGHT_IMPORT_LIMIT_W)} W target.`, "Avoid adding large loads.");
+    }
+    if (clock.dayMode && mode === "EXPORTING") {
+      const pct = exportW / DAY_EXPORT_LIMIT_W * 100;
+      if (pct >= 100) add("day-export-over", "critical", "DAY EXPORT LIMIT EXCEEDED", `${Math.round(exportW)} W export is above the ${Math.round(DAY_EXPORT_LIMIT_W)} W target.`, "Review export control / generation immediately.");
+      else if (pct >= 90) add("day-export-watch", "warning", "DAY EXPORT NEAR LIMIT", `${Math.round(exportW)} W export is ${pct.toFixed(0)}% of the ${Math.round(DAY_EXPORT_LIMIT_W)} W target.`, "Watch generation and site load headroom.");
+    }
+    if (mode === "UNKNOWN" && num(m.powerW) > 500) add("tuya-direction-unknown", "warning", "GRID DIRECTION UNKNOWN", `Tuya reports ${Math.round(num(m.powerW))} W but import/export direction is not confirmed.`, "Wait for counter-delta confirmation before acting on direction.");
+  }
+
+  if (u?.batteryPct != null && num(u.batteryPct) < BATTERY_LOW_PCT) {
+    add("battery-low", num(u.batteryPct) < 10 ? "critical" : "warning", "UPS BATTERY LOW", `Matrix battery SOC is ${Math.round(num(u.batteryPct))}%.`, "Reduce backup load or restore charging source.");
+  }
+  const tempSources = [["pv14000", "PV14000", a?.temp], ["pv9000", "PV9000", b?.temp], ["matrix", "Matrix UPS", u?.transformer ?? u?.temp], ["tuya", "Tuya meter", m?.temperatureC]];
+  for (const [key, label, value] of tempSources) {
+    if (value != null && num(value) > ALERT_TEMP_C) add(`${key}-high-temp`, "warning", `${label.toUpperCase()} HIGH TEMPERATURE`, `${Math.round(num(value))}°C is above the ${Math.round(ALERT_TEMP_C)}°C alert level.`, "Inspect ventilation, fans and load.");
+  }
+  const staleMs = ALERT_STALE_SECONDS * 1000;
+  for (const [key, label, obj] of [["pv14000", "PV14000", a], ["pv9000", "PV9000", b], ["matrix", "Matrix UPS", u], ["tuya", "Tuya meter", m]]) {
+    if (obj?.updatedAt && Date.now() - num(obj.updatedAt) > staleMs) add(`${key}-stale`, "warning", `${label.toUpperCase()} DATA STALE`, `Latest telemetry is older than ${ALERT_STALE_SECONDS} seconds.`, "Check cloud/API connectivity before trusting live values.");
+  }
+  if (m?.online && ["IMPORTING", "EXPORTING", "IDLE"].includes(String(m.mode || "").toUpperCase())) {
+    const physicalSigned = String(m.mode || "").toUpperCase() === "IMPORTING" ? num(m.importW) : String(m.mode || "").toUpperCase() === "EXPORTING" ? -num(m.exportW) : 0;
+    const inverterSigned = num(c.utilityGridW ?? c.gridW);
+    const diff = Math.abs(physicalSigned - inverterSigned);
+    if (diff > RECONCILIATION_ALERT_W * 2) add("grid-reconciliation-critical", "critical", "GRID METER MISMATCH", `Tuya and inverter grid readings differ by about ${Math.round(diff)} W.`, "Check CT direction, meter placement and inverter grid readings.");
+    else if (diff > RECONCILIATION_ALERT_W) add("grid-reconciliation-watch", "warning", "GRID RECONCILIATION WATCH", `Tuya and inverter grid readings differ by about ${Math.round(diff)} W.`, "Check whether the difference persists before recalibration.");
+  }
+  return alerts;
+}
+async function evaluateAndNotify(live) {
+  if (notificationCheckInFlight) return notificationCheckInFlight;
+  const flags = notificationChannelFlags();
+  if (!Object.values(flags).some(Boolean)) return { ok: true, skipped: true, reason: "no remote notification channel configured" };
+  notificationCheckInFlight = (async () => {
+    const now = Date.now();
+    const active = buildLiveAlerts(live);
+    const activeKeys = new Set(active.map((a) => a.key));
+    const sent = [];
+    for (const alert of active) {
+      const prev = alertDeliveryState.get(alert.key);
+      const shouldSend = !prev?.active || prev.severity !== alert.severity || now - num(prev.sentAt) >= ALERT_COOLDOWN_MS;
+      alertDeliveryState.set(alert.key, { active: true, severity: alert.severity, sentAt: shouldSend ? now : prev?.sentAt || 0, title: alert.title, message: alert.message });
+      if (shouldSend) sent.push({ alert, results: await dispatchNotifications(alert) });
+    }
+    for (const [key, prev] of alertDeliveryState.entries()) {
+      if (prev.active && !activeKeys.has(key)) {
+        const recovered = { key: `${key}-recovered`, severity: "info", title: `${prev.title || key} RECOVERED`, message: "The condition is no longer active in the latest telemetry.", isRecovery: true };
+        alertDeliveryState.set(key, { ...prev, active: false, sentAt: now });
+        sent.push({ alert: recovered, results: await dispatchNotifications(recovered) });
+      }
+    }
+    return { ok: true, activeAlerts: active.length, sent };
+  })().finally(() => { notificationCheckInFlight = null; });
+  return notificationCheckInFlight;
+}
+async function notificationHistory(limit = 30) {
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 30));
+  if (!pool || !dbReady) return { ok: true, events: [], note: "PostgreSQL is required for persistent notification history." };
+  const r = await pool.query(`
+    SELECT id, created_at, alert_key, severity, title, message, channels, is_recovery
+    FROM master_notification_events_v1 ORDER BY created_at DESC LIMIT $1
+  `, [safeLimit]);
+  return { ok: true, events: r.rows };
+}
+
 function compactAiSystem(system) {
   if (!system) return null;
   return {
@@ -1446,8 +1785,11 @@ Rules:
 - The dashboard's guardrails are monitoring targets, not automatic control: night import 5 kW and day export 6 kW unless telemetry config says otherwise.
 - You are READ-ONLY. Never claim you switched a breaker, changed an inverter, changed Smart Life, or applied a protection threshold.
 - Do not provide guessed RAW Tuya DP bytes or unsafe live-mains write commands. For protection/control changes, recommend verification and a qualified electrician/installer where appropriate.
-- Be concise and practical. Prefer Roman Urdu/Hinglish for explanations unless the user asks in English. Use watts/kW/kWh and PKR clearly.
-- When diagnosing, separate: Observation, Likely cause, What to check, Urgency.
+- Be concise, practical and visually engaging. Prefer Roman Urdu/Hinglish unless the user asks in English. Use watts/kW/kWh and PKR clearly.
+- Never produce a dull wall of text. Start with one punchy verdict line using an appropriate emoji and a status word such as NORMAL, WATCH, ACTION or CRITICAL.
+- Use short Markdown sections with emojis, bold key readings, and compact bullets. Good section names include: ⚡ Live Verdict, 📊 Key Numbers, 🔍 Why, 🛠 What To Do, 🚨 Urgency.
+- Keep most answers to 4-8 short bullets/blocks. Do not repeat the same reading in multiple sections.
+- When diagnosing, separate observation/cause/action/urgency, but make it look like a modern control-room briefing rather than a report.
 
 RECENT CHAT:
 ${prior.length ? prior.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join("\n") : "None"}
@@ -1523,6 +1865,47 @@ const server = http.createServer(async (req, res) => {
       if (message.length > 1800) return json(res, 400, { ok: false, error: "Message is too long (max 1800 characters)." });
       return json(res, 200, await askSolarAi(message, body?.history));
     }
+    if (url.pathname === "/api/master/notifications/status") return json(res, 200, await notificationStatus());
+    if (url.pathname === "/api/master/notifications/history") return json(res, 200, await notificationHistory(url.searchParams.get("limit")));
+    if (url.pathname === "/api/master/notifications/subscribe") {
+      if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
+      if (!notificationPinAccepted(req)) return json(res, 401, { ok: false, error: "Notification PIN is incorrect." });
+      if (!webPushConfigured) return json(res, 503, { ok: false, error: "Web Push is not configured. Add VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in Render." });
+      const body = await readJsonBody(req);
+      const subscription = await savePushSubscription(body?.subscription || body);
+      return json(res, 200, { ok: true, endpoint: subscription.endpoint, subscriptions: await countPushSubscriptions() });
+    }
+    if (url.pathname === "/api/master/notifications/unsubscribe") {
+      if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
+      if (!notificationPinAccepted(req)) return json(res, 401, { ok: false, error: "Notification PIN is incorrect." });
+      const body = await readJsonBody(req);
+      await deletePushSubscription(body?.endpoint);
+      return json(res, 200, { ok: true, subscriptions: await countPushSubscriptions() });
+    }
+    if (url.pathname === "/api/master/notifications/test") {
+      if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
+      if (!notificationPinAccepted(req)) return json(res, 401, { ok: false, error: "Notification PIN is incorrect." });
+      const body = await readJsonBody(req);
+      const channel = String(body?.channel || "all").trim();
+      const allowed = new Set(["all", "webPush", "telegram", "whatsapp", "sms"]);
+      if (!allowed.has(channel)) return json(res, 400, { ok: false, error: "Unknown notification channel." });
+      const live = await fetchLive({ store: false, cacheMs: 4500 }).catch(() => null);
+      const c = live?.systems?.combined || {};
+      const m = live?.meter || {};
+      const testAlert = {
+        key: `manual-test-${channel}`, severity: "info", title: "NOTIFICATION TEST",
+        message: `Master Dashboard test • Solar ${Math.round(num(c.solarW))} W • Demand ${Math.round(num(c.siteDemandW))} W • Grid ${String(m.mode || "UNKNOWN")} ${Math.round(num(m.powerW))} W.`,
+        action: "No action required — this is a test."
+      };
+      const results = await dispatchNotifications(testAlert, { channels: channel === "all" ? null : [channel] });
+      return json(res, 200, { ok: true, channel, results });
+    }
+    if (url.pathname === "/api/master/notifications/check") {
+      if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
+      if (!notificationPinAccepted(req)) return json(res, 401, { ok: false, error: "Notification PIN is incorrect." });
+      const live = await fetchLive({ store: false, cacheMs: 0 });
+      return json(res, 200, await evaluateAndNotify(live));
+    }
     if (url.pathname === "/api/master/weather") return json(res, 200, await fetchWeather());
     if (url.pathname === "/api/master/tuya-energy-stats") return json(res, 200, await fetchTuyaEnergyStats());
     if (url.pathname === "/api/master/tuya-energy") return json(res, 200, await fetchTuyaEnergyRange({
@@ -1540,6 +1923,7 @@ const server = http.createServer(async (req, res) => {
       topology: { pv9000FeedsMatrix: true, matrixIsUps: true, smartLoadSource: "PV9000", pv9000LoadIncludesUps: PV9000_LOAD_INCLUDES_UPS, pv9000LoadIncludesSmart: PV9000_LOAD_INCLUDES_SMART },
       intelligence: { nightImportLimitW: NIGHT_IMPORT_LIMIT_W, dayExportLimitW: DAY_EXPORT_LIMIT_W, dayModeStart: DAY_MODE_START, dayModeEnd: DAY_MODE_END, batteryCapacityKwh: BATTERY_CAPACITY_KWH || null, exportRatePkr: EXPORT_RATE },
       ai: { ...aiProviderState(), configured: Boolean(GEMINI_API_KEY || OPENAI_API_KEY), pinRequired: Boolean(AI_ACCESS_PIN), readOnly: true },
+      notifications: await notificationStatus(),
       history: await historyStats()
     });
 
@@ -1573,10 +1957,9 @@ server.listen(PORT, () => {
 setInterval(async () => {
   try {
     if (!dbReady) await initDb();
-    if (dbReady) {
-      const current = await fetchLive({ store: false, cacheMs: 0 });
-      await storeSample(current);
-    }
+    const current = await fetchLive({ store: false, cacheMs: 0 });
+    if (dbReady) await storeSample(current);
+    evaluateAndNotify(current).catch((error) => console.error("Notification monitor:", error.message));
   } catch (error) {
     console.error("Background collector:", error.message);
   }

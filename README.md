@@ -1,3 +1,104 @@
+# Raja Fraz Master Dashboard V31 - AI CONTROL-ROOM UI + SMART PUSH ALERTS
+
+V31 keeps every V30/V28 feature and adds two major upgrades: **rich AI briefing cards** instead of raw/boring Markdown, plus a **multi-channel notification center** for browser/Web Push, Telegram, WhatsApp and SMS. All alerts remain monitoring-only; no notification path can switch Tuya or write inverter settings.
+
+## 1) AI responses now look like a control-room briefing
+- Markdown is safely rendered into headings, bold readings, compact bullets and action blocks instead of showing raw `###` / `**` text.
+- The Solar Copilot prompt now starts with a punchy status/verdict and uses emoji-led sections such as Live Verdict, Key Numbers, Why, What To Do and Urgency.
+- Existing Gemini free-tier configuration, live telemetry attachment, PIN protection and read-only safety remain unchanged.
+
+## 2) New Alerts tab
+The top navigation now includes **Alerts** with live channel status, browser subscription controls, test buttons, alert policy and PostgreSQL-backed delivery history.
+
+Automatic rules include:
+- Night grid import warning at 90% and critical above `NIGHT_IMPORT_LIMIT_W` (default 5000 W).
+- Day grid export warning at 90% and critical above `DAY_EXPORT_LIMIT_W` (default 6000 W).
+- PV14000 / PV9000 / Matrix / Tuya connectivity and stale-data alerts.
+- UPS battery low-SOC alert.
+- High-temperature alert.
+- Tuya physical meter versus inverter grid reconciliation alert.
+- Anti-spam cooldown plus recovery messages when a condition clears.
+
+### Browser notifications - zero external provider
+Click **Alerts → Enable browser alerts**.
+- Without VAPID keys: local system notifications work while the dashboard is open.
+- With VAPID keys: the browser can register for standards-based Web Push and receive server-pushed notifications in the background when supported.
+
+For full Web Push, generate one VAPID pair once:
+
+```bash
+npm install
+npm run vapid
+```
+
+Then copy the generated values to Render Environment:
+
+```text
+VAPID_PUBLIC_KEY=<generated public key>
+VAPID_PRIVATE_KEY=<generated private key>
+VAPID_SUBJECT=https://raja-fraz-master-dashboard.onrender.com
+```
+
+Keep `VAPID_PRIVATE_KEY` secret. After redeploying, open the dashboard on each phone/PC that should receive push alerts and click **Enable browser alerts** once.
+
+### Telegram - recommended free remote channel
+Create a Telegram bot with **@BotFather**, send `/start` to the bot, obtain your numeric chat ID, then add:
+
+```text
+TELEGRAM_BOT_TOKEN=<bot token>
+TELEGRAM_CHAT_ID=<your chat id>
+```
+
+Redeploy, then use **Alerts → Send Telegram test**.
+
+### WhatsApp - optional Twilio channel
+Add:
+
+```text
+TWILIO_ACCOUNT_SID=<sid>
+TWILIO_AUTH_TOKEN=<secret>
+TWILIO_WHATSAPP_FROM=whatsapp:+<sender>
+TWILIO_WHATSAPP_TO=whatsapp:+<recipient>
+```
+
+Optional approved-template support:
+
+```text
+TWILIO_WHATSAPP_CONTENT_SID=<content template sid>
+```
+
+Twilio/WhatsApp account rules and messaging charges can apply. Production business-initiated WhatsApp alerts may require an approved template.
+
+### SMS - optional Twilio channel
+Add:
+
+```text
+TWILIO_ACCOUNT_SID=<sid>
+TWILIO_AUTH_TOKEN=<secret>
+TWILIO_SMS_FROM=+<Twilio sender number>
+TWILIO_SMS_TO=+<your phone number>
+```
+
+SMS charges/regulatory requirements depend on sender/recipient country.
+
+### Alert security and tuning
+`NOTIFY_ACCESS_PIN` is optional. If blank, V31 automatically reuses `AI_ACCESS_PIN`.
+
+```text
+NOTIFY_ACCESS_PIN=<optional private PIN>
+ALERT_COOLDOWN_MINUTES=30
+ALERT_STALE_SECONDS=180
+BATTERY_LOW_PCT=20
+NOTIFY_DASHBOARD_URL=https://raja-fraz-master-dashboard.onrender.com
+```
+
+The wall display/browser continuously polling the Master keeps the Render service active while it is in use. Remote server-side alerts run from the existing background telemetry collector while the Master service is awake.
+
+## Deployment
+Replace the complete contents of the existing Master Dashboard GitHub repository with this V31 ZIP and redeploy on Render. Existing V30 variables remain valid; new notification variables are optional. The dashboard works normally even if no remote notification provider is configured.
+
+---
+
 # Raja Fraz Master Dashboard V30 - GEMINI FREE AI COPILOT
 
 V30 keeps every V29/V28/V26 feature and changes the AI layer so **Google Gemini is the primary provider**, designed to work with Gemini API free-tier access where available. OpenAI remains an optional fallback only; no OpenAI credits are required when Gemini is configured and working.
