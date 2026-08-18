@@ -55,9 +55,12 @@ const ALERT_TEMP_C = Math.max(30, Number(process.env.ALERT_TEMP_C || 65));
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const HISTORY_SAMPLE_SECONDS = Math.max(30, Number(process.env.HISTORY_SAMPLE_SECONDS || 60));
 
-// Optional AI Copilot. The API key never reaches the browser; all model calls
-// are made server-side. A dashboard PIN is strongly recommended because Render
-// dashboard URLs can be publicly reachable.
+// Optional AI Copilot. Gemini is the zero-cost/default provider when a
+// GEMINI_API_KEY is configured. OpenAI remains an optional fallback. Keys never
+// reach the browser; all model calls are made server-side. A dashboard PIN is
+// recommended because Render dashboard URLs can be publicly reachable.
+const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || "").trim();
+const GEMINI_MODEL = String(process.env.GEMINI_MODEL || "gemini-3.1-flash-lite").trim() || "gemini-3.1-flash-lite";
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || "").trim();
 const OPENAI_MODEL = String(process.env.OPENAI_MODEL || "gpt-5.6").trim() || "gpt-5.6";
 const AI_ACCESS_PIN = String(process.env.AI_ACCESS_PIN || "").trim();
@@ -153,15 +156,34 @@ function aiPinAccepted(req) {
   if (!AI_ACCESS_PIN) return true;
   return String(req.headers["x-ai-pin"] || "").trim() === AI_ACCESS_PIN;
 }
+function aiProviderState() {
+  if (GEMINI_API_KEY) return {
+    provider: "Gemini",
+    model: GEMINI_MODEL,
+    fallbackProvider: OPENAI_API_KEY ? "OpenAI" : null,
+    fallbackModel: OPENAI_API_KEY ? OPENAI_MODEL : null
+  };
+  if (OPENAI_API_KEY) return { provider: "OpenAI", model: OPENAI_MODEL, fallbackProvider: null, fallbackModel: null };
+  return { provider: null, model: GEMINI_MODEL, fallbackProvider: null, fallbackModel: null };
+}
 function aiStatus() {
+  const state = aiProviderState();
+  const configured = Boolean(GEMINI_API_KEY || OPENAI_API_KEY);
   return {
     ok: true,
-    configured: Boolean(OPENAI_API_KEY),
-    model: OPENAI_MODEL,
+    configured,
+    provider: state.provider,
+    model: state.model,
+    fallbackProvider: state.fallbackProvider,
+    fallbackModel: state.fallbackModel,
+    geminiConfigured: Boolean(GEMINI_API_KEY),
+    openaiConfigured: Boolean(OPENAI_API_KEY),
     pinRequired: Boolean(AI_ACCESS_PIN),
     readOnly: true,
     maxOutputTokens: AI_MAX_OUTPUT_TOKENS,
-    note: OPENAI_API_KEY ? "AI Copilot is available." : "Add OPENAI_API_KEY in Render Environment to enable AI Copilot."
+    note: configured
+      ? `${state.provider} AI Copilot is available${state.fallbackProvider ? ` with ${state.fallbackProvider} fallback` : ""}.`
+      : "Add GEMINI_API_KEY in Render Environment to enable the free-tier AI Copilot."
   };
 }
 function num(v, fallback = 0) {
@@ -1296,6 +1318,121 @@ function extractOpenAiText(data) {
   }
   return parts.join("\n").trim();
 }
+function extractGeminiText(data) {
+  const parts = [];
+  for (const candidate of Array.isArray(data?.candidates) ? data.candidates : []) {
+    for (const part of Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []) {
+      if (typeof part?.text === "string" && part.text.trim()) parts.push(part.text.trim());
+    }
+  }
+  return parts.join("\n").trim();
+}
+async function callGemini(prompt) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45000);
+  try {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "x-goog-api-key": GEMINI_API_KEY,
+        "Content-Type": "application/json",
+        "User-Agent": "Raja-Fraz-Master-AI/2.0"
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.25,
+          maxOutputTokens: AI_MAX_OUTPUT_TOKENS
+        }
+      })
+    });
+    const text = await response.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
+    if (!response.ok) {
+      const detail = data?.error?.message || data?.error?.status || `Gemini HTTP ${response.status}`;
+      const error = new Error(String(detail).slice(0, 500));
+      error.status = response.status;
+      error.provider = "Gemini";
+      throw error;
+    }
+    const answer = extractGeminiText(data);
+    if (!answer) {
+      const finish = data?.candidates?.[0]?.finishReason;
+      const blocked = data?.promptFeedback?.blockReason;
+      const suffix = blocked ? ` (${blocked})` : finish ? ` (${finish})` : "";
+      const error = new Error(`Gemini returned no text response${suffix}`);
+      error.provider = "Gemini";
+      throw error;
+    }
+    const usage = data?.usageMetadata || {};
+    return {
+      answer,
+      provider: "Gemini",
+      model: data?.modelVersion || GEMINI_MODEL,
+      responseId: data?.responseId || null,
+      usage: {
+        inputTokens: num(usage.promptTokenCount),
+        outputTokens: num(usage.candidatesTokenCount),
+        totalTokens: num(usage.totalTokenCount)
+      }
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function callOpenAi(prompt) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45000);
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+        "User-Agent": "Raja-Fraz-Master-AI/2.0"
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        input: prompt,
+        store: false,
+        max_output_tokens: AI_MAX_OUTPUT_TOKENS
+      })
+    });
+    const text = await response.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
+    if (!response.ok) {
+      const detail = data?.error?.message || data?.error || `OpenAI HTTP ${response.status}`;
+      const error = new Error(String(detail).slice(0, 500));
+      error.status = response.status;
+      error.provider = "OpenAI";
+      throw error;
+    }
+    const answer = extractOpenAiText(data);
+    if (!answer) {
+      const error = new Error("OpenAI returned no text response");
+      error.provider = "OpenAI";
+      throw error;
+    }
+    return {
+      answer,
+      provider: "OpenAI",
+      model: data?.model || OPENAI_MODEL,
+      responseId: data?.id || null,
+      usage: data?.usage ? {
+        inputTokens: num(data.usage.input_tokens),
+        outputTokens: num(data.usage.output_tokens),
+        totalTokens: num(data.usage.total_tokens)
+      } : null
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 async function askSolarAi(message, history) {
   const telemetry = await buildAiTelemetryContext();
   const prior = cleanAiHistory(history);
@@ -1321,51 +1458,32 @@ ${JSON.stringify(telemetry)}
 USER QUESTION:
 ${String(message).trim().slice(0, 1800)}`;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45000);
-  try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-        "User-Agent": "Raja-Fraz-Master-AI/1.0"
-      },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        input: prompt,
-        store: false,
-        max_output_tokens: AI_MAX_OUTPUT_TOKENS
-      })
-    });
-    const text = await response.text();
-    let data = {};
-    try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
-    if (!response.ok) {
-      const detail = data?.error?.message || data?.error || `OpenAI HTTP ${response.status}`;
-      const error = new Error(String(detail).slice(0, 500));
-      error.status = response.status;
-      throw error;
+  let result = null;
+  let primaryError = null;
+  if (GEMINI_API_KEY) {
+    try {
+      result = await callGemini(prompt);
+    } catch (error) {
+      primaryError = error;
+      if (!OPENAI_API_KEY) throw error;
     }
-    const answer = extractOpenAiText(data);
-    if (!answer) throw new Error("AI returned no text response");
-    return {
-      ok: true,
-      answer,
-      model: data?.model || OPENAI_MODEL,
-      responseId: data?.id || null,
-      readOnly: true,
-      telemetryAt: telemetry.generatedAt,
-      usage: data?.usage ? {
-        inputTokens: num(data.usage.input_tokens),
-        outputTokens: num(data.usage.output_tokens),
-        totalTokens: num(data.usage.total_tokens)
-      } : null
-    };
-  } finally {
-    clearTimeout(timer);
   }
+  if (!result && OPENAI_API_KEY) {
+    result = await callOpenAi(prompt);
+  }
+  if (!result) throw primaryError || new Error("AI is not configured. Add GEMINI_API_KEY in Render Environment.");
+  return {
+    ok: true,
+    answer: result.answer,
+    provider: result.provider,
+    model: result.model,
+    responseId: result.responseId,
+    readOnly: true,
+    telemetryAt: telemetry.generatedAt,
+    fallbackUsed: Boolean(primaryError && result.provider === "OpenAI"),
+    primaryError: primaryError ? String(primaryError.message || primaryError).slice(0, 220) : null,
+    usage: result.usage || null
+  };
 }
 function staticPath(urlPath) {
   const clean = urlPath.split("?")[0];
@@ -1392,7 +1510,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/master/ai/status") return json(res, 200, aiStatus());
     if (url.pathname === "/api/master/ai/chat") {
       if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
-      if (!OPENAI_API_KEY) return json(res, 503, { ok: false, error: "AI Copilot is not configured. Add OPENAI_API_KEY in Render Environment." });
+      if (!GEMINI_API_KEY && !OPENAI_API_KEY) return json(res, 503, { ok: false, error: "AI Copilot is not configured. Add GEMINI_API_KEY in Render Environment." });
       if (!aiPinAccepted(req)) return json(res, 401, { ok: false, error: "AI PIN is incorrect." });
       const rate = consumeAiRateLimit(req);
       if (!rate.ok) {
@@ -1421,7 +1539,7 @@ const server = http.createServer(async (req, res) => {
       capacities: { pv14000PvW: PV14000_PV_INSTALLED_W, pv14000AcW: PV14000_AC_CAPACITY_W, pv9000PvW: PV9000_PV_INSTALLED_W, pv9000AcW: PV9000_AC_CAPACITY_W, matrixAcW: MATRIX_AC_CAPACITY_W, totalPvW: TOTAL_PV_INSTALLED_W },
       topology: { pv9000FeedsMatrix: true, matrixIsUps: true, smartLoadSource: "PV9000", pv9000LoadIncludesUps: PV9000_LOAD_INCLUDES_UPS, pv9000LoadIncludesSmart: PV9000_LOAD_INCLUDES_SMART },
       intelligence: { nightImportLimitW: NIGHT_IMPORT_LIMIT_W, dayExportLimitW: DAY_EXPORT_LIMIT_W, dayModeStart: DAY_MODE_START, dayModeEnd: DAY_MODE_END, batteryCapacityKwh: BATTERY_CAPACITY_KWH || null, exportRatePkr: EXPORT_RATE },
-      ai: { configured: Boolean(OPENAI_API_KEY), model: OPENAI_MODEL, pinRequired: Boolean(AI_ACCESS_PIN), readOnly: true },
+      ai: { ...aiProviderState(), configured: Boolean(GEMINI_API_KEY || OPENAI_API_KEY), pinRequired: Boolean(AI_ACCESS_PIN), readOnly: true },
       history: await historyStats()
     });
 

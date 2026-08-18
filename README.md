@@ -1,3 +1,50 @@
+# Raja Fraz Master Dashboard V30 - GEMINI FREE AI COPILOT
+
+V30 keeps every V29/V28/V26 feature and changes the AI layer so **Google Gemini is the primary provider**, designed to work with Gemini API free-tier access where available. OpenAI remains an optional fallback only; no OpenAI credits are required when Gemini is configured and working.
+
+## V30 AI setup (no OpenAI credit required)
+Create a Gemini API key in **Google AI Studio**, then add this Render Environment variable:
+
+```text
+GEMINI_API_KEY=<your Gemini API key>
+```
+
+Recommended/default model:
+
+```text
+GEMINI_MODEL=gemini-3.1-flash-lite
+```
+
+Optional dashboard protection:
+
+```text
+AI_ACCESS_PIN=<your private PIN>
+```
+
+Optional OpenAI fallback (leave blank if you have no OpenAI API credit):
+
+```text
+OPENAI_API_KEY=<optional>
+OPENAI_MODEL=gpt-5.6
+```
+
+The AI key is used only by the Node server and is never sent to browser JavaScript. The existing `/api/master/ai/chat` endpoint remains **read-only** and attaches the live Master telemetry snapshot server-side. It has no breaker, inverter, Smart Life, or Tuya write tools.
+
+### Provider behavior
+- If `GEMINI_API_KEY` exists, Gemini is used first.
+- Default model is the stable `gemini-3.1-flash-lite`.
+- If Gemini fails and an `OPENAI_API_KEY` is also configured, V30 can fall back to OpenAI.
+- If only Gemini is configured, a Gemini quota/region/API error is shown clearly instead of attempting any control action.
+- Existing per-IP AI rate limiting and optional `AI_ACCESS_PIN` protection remain enabled.
+
+### Free-tier note
+Gemini API free-tier access and quotas depend on the Google project, model and supported region. Google's current documentation lists `gemini-3.1-flash-lite` as having Gemini API free-tier access. Free-tier submitted content can be used by Google to improve its products; use paid-tier terms if that data handling is not acceptable.
+
+## Deployment
+Replace the complete contents of the existing Master Dashboard GitHub repository with this V30 ZIP and redeploy on Render. Existing inverter/Tuya/PostgreSQL variables remain unchanged. Then add `GEMINI_API_KEY` in Render Environment and restart/redeploy.
+
+---
+
 # Raja Fraz Master Dashboard V29 - AI COPILOT
 
 V29 keeps all V28 animated wall-display fixes and V26/V27 intelligence features, and adds a server-side **Solar AI Copilot** powered through the OpenAI Responses API.

@@ -127,11 +127,11 @@ async function loadAiStatus(){
     const pill=$('aiStatusPill');
     if(d.configured){set('aiStatusPill','✦ AI READY');pill?.classList.add('aiReady');pill?.classList.remove('aiOff');}
     else{set('aiStatusPill','AI NOT CONFIGURED');pill?.classList.add('aiOff');pill?.classList.remove('aiReady');}
-    set('aiModelLabel',`Model ${d.model||'--'}${d.pinRequired?' • PIN protected':''}`);
+    set('aiModelLabel',`${d.provider||'AI'} • ${d.model||'--'}${d.fallbackProvider?` • ${d.fallbackProvider} fallback`:''}${d.pinRequired?' • PIN protected':''}`);
     if($('aiPinBox'))$('aiPinBox').hidden=!d.pinRequired;
     if(d.pinRequired&&$('aiPinInput'))$('aiPinInput').value=aiPin();
     setAiBusy(false);
-    if(!d.configured)addAiMessage('assistant','AI is installed in V29 but not enabled yet. Add OPENAI_API_KEY in Render Environment, then redeploy/restart the service.');
+    if(!d.configured)addAiMessage('assistant','AI is installed in V30 but not enabled yet. Add GEMINI_API_KEY in Render Environment, then redeploy/restart the service.');
   }catch(error){
     aiStatusData={configured:false};set('aiStatusPill','AI STATUS ERROR');$('aiStatusPill')?.classList.add('aiOff');set('aiModelLabel',error.message);setAiBusy(false);
   }
@@ -145,7 +145,7 @@ async function askAi(message){
     const r=await fetch('/api/master/ai/chat',{method:'POST',headers,body:JSON.stringify({message:q,history:aiHistory.slice(0,-1)})});
     const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||`AI HTTP ${r.status}`);
     addAiMessage('assistant',d.answer);aiHistory.push({role:'assistant',text:d.answer});aiHistory=aiHistory.slice(-8);
-    const u=d.usage;set('aiUsage',u?`${d.model||'AI'} • ${finite(u.totalTokens)} tokens • live snapshot ${new Date(d.telemetryAt||Date.now()).toLocaleTimeString('en-GB',{hour12:false})}`:`${d.model||'AI'} • response complete`);
+    const u=d.usage;const p=d.provider?`${d.provider} • `:'';const fb=d.fallbackUsed?' • fallback used':'';set('aiUsage',u?`${p}${d.model||'AI'} • ${finite(u.totalTokens)} tokens${fb} • live snapshot ${new Date(d.telemetryAt||Date.now()).toLocaleTimeString('en-GB',{hour12:false})}`:`${p}${d.model||'AI'} • response complete${fb}`);
   }catch(error){
     const msg=String(error.message||error);addAiMessage('assistant',msg,{error:true});set('aiUsage','AI request failed');
     if(msg.toLowerCase().includes('pin'))$('aiPinInput')?.focus();

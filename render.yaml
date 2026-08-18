@@ -52,6 +52,10 @@ services:
         value: 65
       - key: HISTORY_SAMPLE_SECONDS
         value: 60
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.1-flash-lite
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
