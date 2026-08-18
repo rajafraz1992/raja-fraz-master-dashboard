@@ -1134,7 +1134,8 @@ async function fetchWeather() {
   }
 }
 function staticPath(urlPath) {
-  const rel = urlPath === "/" ? "index.html" : decodeURIComponent(urlPath.split("?")[0]).replace(/^\/+/, "");
+  const clean = urlPath.split("?")[0];
+  const rel = clean === "/" ? "index.html" : (clean === "/display" || clean === "/display/") ? "display.html" : decodeURIComponent(clean).replace(/^\/+/, "");
   const abs = resolve(APP_DIR, normalize(rel));
   const root = resolve(APP_DIR) + sep;
   return abs.startsWith(root) ? abs : null;

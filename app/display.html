@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#06131f">
+  <meta name="color-scheme" content="dark">
+  <title>Raja Fraz Inverter Room Display</title>
+  <link rel="stylesheet" href="display.css?v=27">
+</head>
+<body>
+  <div class="roomDisplay" id="roomDisplay">
+    <header class="displayHeader">
+      <div class="displayBrand">
+        <img src="assets/raja-fraz-logo.jpeg" alt="Raja Fraz">
+        <div>
+          <span class="kicker">INVERTER ROOM • LIVE COMMAND DISPLAY</span>
+          <h1>Raja Fraz Solar Estate</h1>
+          <small>PV14000 • PV9000 • Matrix UPS • Tuya Physical Grid Meter</small>
+        </div>
+      </div>
+      <div class="headerRight">
+        <div class="weatherPill" id="roomWeather">Gujrat • --°C</div>
+        <div class="livePill connecting" id="roomLive"><i></i><span>CONNECTING</span></div>
+        <div class="clockBox"><b id="roomClock">--:--:--</b><span id="roomDate">--</span></div>
+        <button class="screenButton" id="fullscreenBtn" type="button" title="Fullscreen / keep screen awake">⛶</button>
+      </div>
+    </header>
+
+    <main class="displayMain">
+      <section class="heroMetrics" aria-label="Live master power">
+        <article class="heroCard solarHero">
+          <div class="heroIcon">☀</div>
+          <div><span>TOTAL SOLAR</span><b id="roomSolar">--</b><small id="roomSolarSub">11.14 kWp installed</small></div>
+          <div class="heroBar"><i id="roomSolarBar"></i></div>
+        </article>
+        <article class="heroCard demandHero">
+          <div class="heroIcon">⌂</div>
+          <div><span>SITE DEMAND</span><b id="roomDemand">--</b><small id="roomDemandSub">Upstream demand</small></div>
+          <div class="heroBar"><i id="roomDemandBar"></i></div>
+        </article>
+        <article class="heroCard gridHero" id="roomGridCard">
+          <div class="heroIcon">↕</div>
+          <div><span>PHYSICAL GRID</span><b id="roomGrid">--</b><small id="roomGridSub">Tuya meter</small></div>
+          <div class="heroBar"><i id="roomGridBar"></i></div>
+        </article>
+        <article class="heroCard batteryHero" id="roomBatteryCard">
+          <div class="heroIcon">▣</div>
+          <div><span>UPS BATTERY</span><b id="roomBattery">--</b><small id="roomBatterySub">Matrix UPS</small></div>
+          <div class="heroBar"><i id="roomBatteryBar"></i></div>
+        </article>
+      </section>
+
+      <section class="displayWorkArea">
+        <article class="flowPanel">
+          <div class="panelTitle">
+            <div><span>LIVE ENERGY FLOW</span><h2>Whole-site power path</h2></div>
+            <div class="guardBadge" id="roomGuard">--</div>
+          </div>
+
+          <div class="flowCanvas" id="flowCanvas">
+            <svg class="flowLines" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">
+              <path id="linePv14000" class="energyLine solar" d="M175 145 C240 210 355 235 470 280"/>
+              <path id="linePv9000" class="energyLine solar" d="M500 145 L500 265"/>
+              <path id="lineGrid" class="energyLine grid" d="M825 145 C760 210 645 235 530 280"/>
+              <path id="lineSmart" class="energyLine smart" d="M455 145 C365 260 280 360 190 455"/>
+              <path id="lineMatrix" class="energyLine ups" d="M520 335 L520 455"/>
+              <path id="lineBattery" class="energyLine battery" d="M585 485 C660 485 715 485 785 485"/>
+            </svg>
+
+            <div class="flowNode pv14000Node" id="nodePv14000">
+              <span>PV14000</span><b id="flowPv14000">--</b><small>Meta 10KW • 6.78 kWp</small><em id="flowPv14000State">--</em>
+            </div>
+            <div class="flowNode pv9000Node" id="nodePv9000">
+              <span>PV9000</span><b id="flowPv9000">--</b><small>Meta 6KW • 4.36 kWp</small><em id="flowPv9000State">--</em>
+            </div>
+            <div class="flowNode gridNode" id="nodeGrid">
+              <span>TUYA / GRID</span><b id="flowGrid">--</b><small id="flowGridDetail">Physical meter</small><em id="flowGridState">--</em>
+            </div>
+            <div class="flowNode siteNode active" id="nodeSite">
+              <span>SITE DEMAND</span><b id="flowSite">--</b><small id="flowBalance">Power balance --</small><em>MASTER BUS</em>
+            </div>
+            <div class="flowNode smartNode" id="nodeSmart">
+              <span>SMART LOAD</span><b id="flowSmart">--</b><small>Direct from PV9000</small><em>DEDICATED</em>
+            </div>
+            <div class="flowNode matrixNode" id="nodeMatrix">
+              <span>MATRIX UPS</span><b id="flowMatrix">--</b><small id="flowMatrixDetail">AC input → backup load</small><em id="flowMatrixState">--</em>
+            </div>
+            <div class="flowNode batteryNode" id="nodeBattery">
+              <span>BATTERY</span><b id="flowBattery">--</b><small id="flowBatteryDetail">--</small><em id="flowBatteryState">--</em>
+            </div>
+          </div>
+
+          <div class="flowLegend">
+            <span><i class="solarDot"></i>Solar generation</span>
+            <span><i class="loadDot"></i>Site demand</span>
+            <span><i class="importDot"></i>Grid import</span>
+            <span><i class="exportDot"></i>Grid export</span>
+            <span><i class="upsDot"></i>UPS path</span>
+          </div>
+        </article>
+
+        <aside class="systemsPanel">
+          <div class="panelTitle compactTitle"><div><span>SYSTEM HEALTH</span><h2>Inverters & meter</h2></div><b id="roomSystemsCount">--/4</b></div>
+
+          <article class="systemTile" id="tilePv14000">
+            <div class="systemStripe solarStripe"></div>
+            <div class="systemName"><span>FRONUS META 10KW</span><b>PV14000</b><small id="pv14000FreshRoom">Waiting for data</small></div>
+            <div class="systemReading"><span>Solar</span><b id="pv14000SolarRoom">--</b><small id="pv14000LoadRoom">Load --</small></div>
+            <em class="systemState" id="pv14000StateRoom">CHECK</em>
+          </article>
+
+          <article class="systemTile" id="tilePv9000">
+            <div class="systemStripe solarStripe"></div>
+            <div class="systemName"><span>FRONUS META 6KW</span><b>PV9000</b><small id="pv9000FreshRoom">Waiting for data</small></div>
+            <div class="systemReading"><span>Solar</span><b id="pv9000SolarRoom">--</b><small id="pv9000LoadRoom">Load --</small></div>
+            <em class="systemState" id="pv9000StateRoom">CHECK</em>
+          </article>
+
+          <article class="systemTile" id="tileMatrix">
+            <div class="systemStripe upsStripe"></div>
+            <div class="systemName"><span>FRONUS MATRIX 6KW</span><b>UPS / BACKUP</b><small id="matrixFreshRoom">Waiting for data</small></div>
+            <div class="systemReading"><span>UPS Load</span><b id="matrixLoadRoom">--</b><small id="matrixInputRoom">Input --</small></div>
+            <em class="systemState" id="matrixStateRoom">CHECK</em>
+          </article>
+
+          <article class="systemTile" id="tileTuya">
+            <div class="systemStripe meterStripe"></div>
+            <div class="systemName"><span>PHYSICAL GRID METER</span><b>TUYA</b><small id="tuyaFreshRoom">Waiting for data</small></div>
+            <div class="systemReading"><span id="tuyaModeRoom">Grid</span><b id="tuyaPowerRoom">--</b><small id="tuyaElectricalRoom">-- V • -- A</small></div>
+            <em class="systemState" id="tuyaStateRoom">CHECK</em>
+          </article>
+
+          <div class="limitStack">
+            <div class="limitRow importLimit"><div><span>NIGHT IMPORT LIMIT</span><b id="roomImportLimit">--</b></div><div class="limitTrack"><i id="roomImportTrack"></i></div><small id="roomImportHeadroom">5.00 kW target</small></div>
+            <div class="limitRow exportLimit"><div><span>DAY EXPORT LIMIT</span><b id="roomExportLimit">--</b></div><div class="limitTrack"><i id="roomExportTrack"></i></div><small id="roomExportHeadroom">6.00 kW target</small></div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="bottomStrip">
+        <div class="dayStat"><span>TODAY SOLAR</span><b id="roomTodaySolar">--</b><small>PV14000 + PV9000</small></div>
+        <div class="dayStat"><span>GRID IMPORT</span><b id="roomTodayImport">--</b><small>Today</small></div>
+        <div class="dayStat"><span>GRID EXPORT</span><b id="roomTodayExport">--</b><small>Today</small></div>
+        <div class="dayStat"><span>SMART LOAD</span><b id="roomSmartLoad">--</b><small>Live PV9000 branch</small></div>
+        <div class="dayStat"><span>PV PERFORMANCE</span><b id="roomPvYield">--</b><small>Today kWh/kWp</small></div>
+        <div class="alertTicker" id="alertTicker"><span>STATUS</span><b id="roomAlert">Waiting for live telemetry…</b></div>
+      </section>
+    </main>
+
+    <footer class="displayFooter">
+      <span>READ-ONLY DISPLAY • NO BREAKER / INVERTER CONTROL</span>
+      <span id="roomLastUpdate">Last update --</span>
+      <span>Auto refresh 10s • <a href="/" tabindex="-1">Open full dashboard</a></span>
+    </footer>
+  </div>
+  <script src="display.js?v=27"></script>
+</body>
+</html>

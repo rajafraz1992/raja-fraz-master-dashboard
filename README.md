@@ -1,3 +1,31 @@
+# Raja Fraz Master Solar Command Center - V27
+
+V27 keeps all V26 intelligence features and adds a dedicated **Inverter Room Display Mode** for an always-on monitor, Android TV box/stick, mini PC or kiosk browser.
+
+## Inverter Room Display
+Open the Master Dashboard service at:
+
+`/display`
+
+Example: `https://YOUR-MASTER-DASHBOARD.onrender.com/display`
+
+Display Mode is designed for a 19–22 inch wall monitor and includes:
+- large live Solar, Site Demand, Physical Grid and UPS Battery cards;
+- animated whole-site energy-flow map;
+- live PV14000, PV9000, Matrix UPS and Tuya meter status;
+- 5 kW night-import and 6 kW day-export guard meters;
+- Today Solar / Import / Export and PV yield;
+- large maintenance alert ticker;
+- Pakistan time, Gujrat weather, source freshness and automatic 10-second refresh;
+- fullscreen button plus browser Screen Wake Lock where supported;
+- automatic recovery reload after repeated live-data failures.
+
+**Safety:** Display Mode is read-only. It does not send inverter commands, Tuya breaker commands, or change any protection setting.
+
+No new Render environment variables are required. Keep the existing V26 environment configuration unchanged.
+
+---
+
 # Raja Fraz Master Solar Command Center - V26 NEXT LEVEL INTELLIGENCE
 
 V26 keeps the complete V25 dashboard, straight-ended gauges, V24 animated Energy Flow map, V22 professional icons, V21 Render auto-wake, V20 Tuya direction fix and the existing three-inverter topology. It adds a full read-only intelligence layer.
