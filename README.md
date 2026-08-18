@@ -1,3 +1,38 @@
+# Raja Fraz Master Solar Dashboard - V35 OPERATOR TOOLKIT
+
+V35 turns the dashboard into a practical planning workbench while preserving the complete V34 organized photo flow and all existing live monitoring features.
+
+## V35 highlights
+- New **Tools** tab with a live grid what-if simulator for added loads and solar.
+- Appliance stack builder with editable quantities/watts and 10 kW / 6 kW / UPS capacity comparisons.
+- Battery backup runtime estimator using capacity, live SOC, efficiency and planned UPS load.
+- Solar value estimator with separate self-use and export tariffs plus selectable projection days.
+- Single/three-phase watts-to-amps and kWh-to-PKR converters.
+- One-click live summary copy, JSON export, CSV export and printable operator report.
+- Quick diagnostics for source availability, physical meter reference, reconciliation and power balance.
+- Tool settings persist in the browser; calculations remain monitoring-only and never change inverter or Tuya settings.
+
+No new required environment variables are needed for V35.
+
+---
+
+# Raja Fraz Master Solar Dashboard - V34 ORGANIZED FLOW
+
+V34 reorganizes the V33 photo-based Energy Flow tab into four aligned electrical lanes so device cards, route labels and animated power paths no longer overlap.
+
+## V34 highlights
+- Clean left-to-right topology: solar sources → master distribution → direct/protected loads.
+- Separate lower physical-grid lane: WAPDA → Tuya CT meter → master bus.
+- Dedicated Matrix branch for PV9000 AC input, battery exchange and essential UPS output.
+- Ten aligned device cards with responsive spacing across desktop, laptop, tablet and mobile widths.
+- Compact fixed-size SVG arrowheads replace the oversized markers visible in V33.
+- Floating route labels moved into clear whitespace; tight Matrix/battery/output values remain on their device cards.
+- Flow canvas reduced from 860 px to 720 px so the useful topology fits much better in one screen.
+
+No new required environment variables are needed for V34.
+
+---
+
 # Raja Fraz Master Solar Dashboard - V33 DEVICE PHOTO FLOW
 
 V33 keeps the complete V32 ULTRA PRO MAX dashboard and rebuilds the **Energy Flow** tab around the real physical topology. Every live hardware/load node now has a local PNG visual, clearer source-to-destination routing, colored arrowheads and the existing direction-aware animation.

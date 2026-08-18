@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#082b43">
   <title>Raja Fraz Master Solar Command Center</title>
-  <link rel="stylesheet" href="styles.css?v=32">
+  <link rel="stylesheet" href="styles.css?v=35">
 </head>
 <body>
   <svg class="iconSprite" aria-hidden="true" focusable="false">
@@ -39,6 +39,7 @@
     <symbol id="i-timeline" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="18" r="2"/></symbol>
     <symbol id="i-ai" viewBox="0 0 24 24"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><path d="M18.5 13l.9 2.6L22 16.5l-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9zM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8z"/></symbol>
     <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></symbol>
+    <symbol id="i-tools" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5-5L12 3.6 9.6 6 7.3 3.7a4 4 0 0 0 5 5L4 17a2.1 2.1 0 1 0 3 3l7.7-8.3a4 4 0 0 0 5-5L17.4 9 15 6.6z"/></symbol>
   </svg>
 
   <nav class="topbar">
@@ -54,6 +55,7 @@
       <button class="navtab aiNav" data-view="ai"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-ai"></use></svg><span>AI Copilot</span></button>
       <button class="navtab notifyNav" data-view="notifications"><svg class="uiIcon icon-import" aria-hidden="true"><use href="#i-bell"></use></svg><span>Alerts</span><b id="notifyNavBadge" hidden>!</b></button>
       <button class="navtab" data-view="command"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-phone"></use></svg><span>Command</span></button>
+      <button class="navtab toolsNav" data-view="tools"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-tools"></use></svg><span>Tools</span><em>NEW</em></button>
       <button class="navtab" data-view="charts"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>Charts</span></button>
       <button class="navtab" data-view="totals"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-total"></use></svg><span>Totals</span></button>
       <button class="navtab" data-view="health"><svg class="uiIcon icon-health" aria-hidden="true"><use href="#i-health"></use></svg><span>Health</span> <b id="alertCount">0</b></button>
@@ -276,31 +278,35 @@
           </div>
 
           <div class="flowMap" id="flowMap">
-            <svg class="flowSvg" viewBox="0 0 1200 720" preserveAspectRatio="none" aria-hidden="true">
+            <div class="flowZoneLabel zoneSolar"><b>01</b><span>Solar sources</span></div>
+            <div class="flowZoneLabel zoneMaster"><b>02</b><span>Master distribution</span></div>
+            <div class="flowZoneLabel zoneOutputs"><b>03</b><span>Direct &amp; protected loads</span></div>
+            <div class="flowZoneLabel zoneGrid"><b>04</b><span>Physical grid path</span></div>
+            <svg class="flowSvg" viewBox="0 0 1440 760" preserveAspectRatio="none" aria-hidden="true">
               <defs>
                 <filter id="flowSoftGlow" x="-20%" y="-20%" width="140%" height="140%">
                   <feGaussianBlur stdDeviation="3" result="blur"></feGaussianBlur>
                   <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
                 </filter>
-                <marker id="flowArrowSolar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#e8a400"></path></marker>
-                <marker id="flowArrowPv9000" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#7b5cff"></path></marker>
-                <marker id="flowArrowImport" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#d93e4d"></path></marker>
-                <marker id="flowArrowExport" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#1aa26f"></path></marker>
-                <marker id="flowArrowLoad" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#2387d9"></path></marker>
-                <marker id="flowArrowSmart" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#ef8d24"></path></marker>
-                <marker id="flowArrowUps" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#14a7a6"></path></marker>
-                <marker id="flowArrowCharge" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#1aa26f"></path></marker>
-                <marker id="flowArrowDischarge" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#d93e4d"></path></marker>
+                <marker id="flowArrowSolar" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#e8a400"></path></marker>
+                <marker id="flowArrowPv9000" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#7b5cff"></path></marker>
+                <marker id="flowArrowImport" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#d93e4d"></path></marker>
+                <marker id="flowArrowExport" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#1aa26f"></path></marker>
+                <marker id="flowArrowLoad" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#2387d9"></path></marker>
+                <marker id="flowArrowSmart" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#ef8d24"></path></marker>
+                <marker id="flowArrowUps" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#14a7a6"></path></marker>
+                <marker id="flowArrowCharge" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#1aa26f"></path></marker>
+                <marker id="flowArrowDischarge" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#d93e4d"></path></marker>
               </defs>
-              <path id="flowPv14000Line" class="flowLine flowSolar" d="M250 170 C250 240 420 255 520 320"></path>
-              <path id="flowPv9000Line" class="flowLine flowSolar pv9000Color" d="M750 170 C720 245 615 260 545 320"></path>
-              <path id="flowGridMeterLine" class="flowLine flowGrid" d="M145 360 H260"></path>
-              <path id="flowMeterBusLine" class="flowLine flowGrid" d="M340 360 H485"></path>
-              <path id="flowSiteLoadLine" class="flowLine flowLoad" d="M530 405 V545"></path>
-              <path id="flowPv9000SmartLine" class="flowLine flowSmart" d="M790 120 C930 120 995 175 1040 225"></path>
-              <path id="flowPv9000MatrixLine" class="flowLine flowSmart" d="M750 170 C750 260 780 315 780 365"></path>
-              <path id="flowMatrixBackupLine" class="flowLine flowUps" d="M830 420 C930 420 970 470 1010 500"></path>
-              <path id="flowBatteryLine" class="flowLine flowBattery" d="M780 570 V470"></path>
+              <path id="flowPv14000Line" class="flowLine flowSolar" d="M260 120 C390 120 470 250 575 318"></path>
+              <path id="flowPv9000Line" class="flowLine flowSolar pv9000Color" d="M420 185 C455 245 525 292 580 330"></path>
+              <path id="flowGridMeterLine" class="flowLine flowGrid" d="M260 600 H305"></path>
+              <path id="flowMeterBusLine" class="flowLine flowGrid" d="M535 600 C605 600 595 470 625 410"></path>
+              <path id="flowSiteLoadLine" class="flowLine flowLoad" d="M805 315 C855 275 845 155 885 135"></path>
+              <path id="flowPv9000SmartLine" class="flowLine flowSmart" d="M535 120 C705 105 795 215 885 310"></path>
+              <path id="flowPv9000MatrixLine" class="flowLine flowSmart" d="M535 150 C725 165 800 430 885 520"></path>
+              <path id="flowMatrixBackupLine" class="flowLine flowUps" d="M1115 535 C1190 535 1190 620 1165 620"></path>
+              <path id="flowBatteryLine" class="flowLine flowBattery" d="M1165 400 C1110 400 1140 500 1115 500"></path>
             </svg>
 
             <div class="flowNode nodePv14000" id="flowNodePv14000">
@@ -624,6 +630,88 @@
       </div>
     </section>
 
+    <section id="tools" class="view toolsView">
+      <div class="toolsShell">
+        <div class="toolsHero">
+          <div class="toolsHeroCopy">
+            <div class="toolsKicker"><span></span>V35 OPERATOR TOOLKIT</div>
+            <h2>Plan it before the grid feels it.</h2>
+            <p>Live site data + practical calculators for smarter load timing, backup planning and cost decisions. Everything here is monitoring-only.</p>
+            <div class="toolsHeroActions"><button id="toolCopySnapshot" type="button">Copy live summary</button><button id="toolDownloadJson" type="button" class="ghost">Download JSON</button><button id="toolDownloadCsv" type="button" class="ghost">Download CSV</button></div>
+          </div>
+          <div class="toolsLiveMatrix">
+            <div class="solar"><span>LIVE SOLAR</span><b id="toolLiveSolar">--</b><small id="toolLiveSolarSub">11.14 kWp estate</small></div>
+            <div class="load"><span>SITE DEMAND</span><b id="toolLiveDemand">--</b><small>Upstream demand</small></div>
+            <div class="grid"><span>PHYSICAL GRID</span><b id="toolLiveGrid">--</b><small id="toolLiveGridSub">Waiting for Tuya</small></div>
+            <div class="battery"><span>UPS RESERVE</span><b id="toolLiveBattery">--</b><small id="toolLiveBatterySub">Matrix UPS</small></div>
+          </div>
+        </div>
+
+        <div class="toolsGrid">
+          <article class="toolCard scenarioCard toolWide">
+            <div class="toolCardHead"><div class="toolIcon scenario">↗</div><div><span>WHAT-IF LAB</span><h3>Grid Scenario Simulator</h3><p>See the grid result before switching on a load or gaining more solar.</p></div><b class="liveToolBadge">LIVE BASELINE</b></div>
+            <div class="scenarioBody">
+              <div class="scenarioInputs">
+                <label>Extra load <small>watts</small><input id="toolExtraLoad" data-tools-persist type="number" min="0" max="30000" step="100" value="0"></label>
+                <label>Extra solar <small>watts</small><input id="toolExtraSolar" data-tools-persist type="number" min="0" max="30000" step="100" value="0"></label>
+                <button id="toolScenarioReset" type="button">Reset scenario</button>
+              </div>
+              <div class="scenarioResult">
+                <span>PROJECTED PHYSICAL GRID</span><b id="toolProjectedGrid">--</b><small id="toolScenarioEquation">Live grid + extra load − extra solar</small>
+                <div class="toolProgress"><i id="toolScenarioBar"></i></div><strong id="toolScenarioGuard">Waiting for live telemetry</strong>
+              </div>
+              <div class="scenarioDelta"><div><span>Projected demand</span><b id="toolProjectedDemand">--</b></div><div><span>Projected solar</span><b id="toolProjectedSolar">--</b></div><div><span>Guard headroom</span><b id="toolProjectedHeadroom">--</b></div></div>
+            </div>
+          </article>
+
+          <article class="toolCard loadPlannerCard toolWide">
+            <div class="toolCardHead"><div class="toolIcon load">⚡</div><div><span>LOAD PLANNER</span><h3>Appliance Stack Builder</h3><p>Select appliances and compare their combined demand against each inverter.</p></div><b id="toolLoadTotal" class="toolHeadline">0 W</b></div>
+            <div class="loadPlannerBody">
+              <div class="applianceList">
+                <div class="applianceRow" data-tool-load><input aria-label="Include 1.5 ton AC" data-load-on data-tools-persist type="checkbox"><div><b>1.5 ton AC</b><small>Typical running load</small></div><input aria-label="AC quantity" data-load-qty data-tools-persist type="number" min="1" max="10" value="1"><input aria-label="AC watts" data-load-watts data-tools-persist type="number" min="0" max="10000" value="1800"><span>W each</span></div>
+                <div class="applianceRow" data-tool-load><input aria-label="Include water motor" data-load-on data-tools-persist type="checkbox"><div><b>Water motor</b><small>Pump / motor estimate</small></div><input aria-label="Motor quantity" data-load-qty data-tools-persist type="number" min="1" max="10" value="1"><input aria-label="Motor watts" data-load-watts data-tools-persist type="number" min="0" max="10000" value="1100"><span>W each</span></div>
+                <div class="applianceRow" data-tool-load><input aria-label="Include refrigerator" data-load-on data-tools-persist type="checkbox" checked><div><b>Refrigerator</b><small>Essential continuous load</small></div><input aria-label="Refrigerator quantity" data-load-qty data-tools-persist type="number" min="1" max="10" value="2"><input aria-label="Refrigerator watts" data-load-watts data-tools-persist type="number" min="0" max="10000" value="200"><span>W each</span></div>
+                <div class="applianceRow" data-tool-load><input aria-label="Include fans and lights" data-load-on data-tools-persist type="checkbox" checked><div><b>Fans + lights</b><small>Combined room circuits</small></div><input aria-label="Fans quantity" data-load-qty data-tools-persist type="number" min="1" max="20" value="1"><input aria-label="Fans and lights watts" data-load-watts data-tools-persist type="number" min="0" max="10000" value="500"><span>W each</span></div>
+                <div class="applianceRow custom" data-tool-load><input aria-label="Include custom load" data-load-on data-tools-persist type="checkbox"><div><b>Custom load</b><small>Edit quantity and watts</small></div><input aria-label="Custom quantity" data-load-qty data-tools-persist type="number" min="1" max="20" value="1"><input aria-label="Custom watts" data-load-watts data-tools-persist type="number" min="0" max="30000" value="1000"><span>W each</span></div>
+              </div>
+              <div class="capacityCompare">
+                <div><span>PV14000 • 10 kW</span><b id="toolCap14000Text">9%</b><div><i id="toolCap14000"></i></div></div>
+                <div><span>PV9000 • 6 kW</span><b id="toolCap9000Text">15%</b><div><i id="toolCap9000"></i></div></div>
+                <div><span>Matrix UPS • 6 kW</span><b id="toolCapMatrixText">15%</b><div><i id="toolCapMatrix"></i></div></div>
+                <p id="toolLoadAdvice">Select loads to build a switching plan.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="toolCard batteryTool">
+            <div class="toolCardHead"><div class="toolIcon battery">▰</div><div><span>BACKUP PLANNER</span><h3>Battery Runtime</h3></div></div>
+            <div class="toolForm twoCol"><label>Battery capacity <small>kWh</small><input id="toolBatteryKwh" data-tools-persist type="number" min="0.1" max="200" step="0.1" value="5"></label><label>Current SOC <small>%</small><input id="toolBatterySoc" data-tools-persist type="number" min="0" max="100" step="1" value="80"></label><label>UPS efficiency <small>%</small><input id="toolBatteryEff" data-tools-persist type="number" min="10" max="100" step="1" value="90"></label><label>Backup load <small>watts</small><input id="toolBatteryLoad" data-tools-persist type="number" min="1" max="30000" step="50" value="1000"></label></div>
+            <div class="toolResult batteryResult"><span>ESTIMATED RUNTIME</span><b id="toolBatteryRuntime">--</b><small id="toolBatteryEnergy">Usable energy --</small></div>
+          </article>
+
+          <article class="toolCard savingsTool">
+            <div class="toolCardHead"><div class="toolIcon money">₨</div><div><span>VALUE PLANNER</span><h3>Solar Savings</h3></div></div>
+            <div class="toolForm twoCol"><label>Daily solar <small>kWh</small><input id="toolDailySolar" data-tools-persist type="number" min="0" max="500" step="0.1" value="30"></label><label>Self-use <small>%</small><input id="toolSelfUse" data-tools-persist type="number" min="0" max="100" value="70"></label><label>Import tariff <small>PKR/kWh</small><input id="toolImportTariff" data-tools-persist type="number" min="0" max="500" step="0.1" value="65"></label><label>Export tariff <small>PKR/kWh</small><input id="toolExportTariff" data-tools-persist type="number" min="0" max="500" step="0.1" value="27"></label><label>Projection <small>days</small><input id="toolSavingsDays" data-tools-persist type="number" min="1" max="3650" value="30"></label></div>
+            <div class="toolResult moneyResult"><span>PROJECTED VALUE</span><b id="toolSavingsValue">--</b><small id="toolSavingsSplit">Self-use + export credit</small></div>
+          </article>
+
+          <article class="toolCard converterTool">
+            <div class="toolCardHead"><div class="toolIcon convert">⇄</div><div><span>QUICK CONVERTER</span><h3>Power & Cost</h3></div></div>
+            <div class="toolForm twoCol"><label>Power <small>watts</small><input id="toolConvertWatts" data-tools-persist type="number" min="0" max="100000" step="100" value="5000"></label><label>Voltage <small>volts</small><input id="toolConvertVolts" data-tools-persist type="number" min="1" max="1000" step="1" value="230"></label><label>Supply<select id="toolConvertPhase" data-tools-persist><option value="1">Single phase</option><option value="3">Three phase</option></select></label><label>Power factor<input id="toolConvertPf" data-tools-persist type="number" min="0.1" max="1" step="0.01" value="1"></label><label>Energy <small>kWh</small><input id="toolConvertKwh" data-tools-persist type="number" min="0" max="100000" step="0.1" value="10"></label><label>Tariff <small>PKR/kWh</small><input id="toolConvertTariff" data-tools-persist type="number" min="0" max="500" step="0.1" value="65"></label></div>
+            <div class="converterResults"><div><span>CURRENT</span><b id="toolConvertAmps">-- A</b></div><div><span>ENERGY COST</span><b id="toolConvertCost">--</b></div></div>
+          </article>
+
+          <article class="toolCard diagnosticTool">
+            <div class="toolCardHead"><div class="toolIcon diagnostic">✓</div><div><span>QUICK CHECK</span><h3>Live Diagnostics</h3></div><b id="toolDiagState" class="liveToolBadge">CHECKING</b></div>
+            <div class="diagnosticList"><div><span>Telemetry sources</span><b id="toolDiagSources">--</b></div><div><span>Grid reference</span><b id="toolDiagGrid">--</b></div><div><span>Meter ↔ inverter</span><b id="toolDiagRecon">--</b></div><div><span>Power balance</span><b id="toolDiagBalance">--</b></div></div>
+            <button id="toolPrintReport" class="toolPrint" type="button">Print operator report</button>
+            <div id="toolToast" class="toolToast" aria-live="polite"></div>
+          </article>
+        </div>
+        <p class="toolsSafety">Calculators are planning aids based on entered estimates and current telemetry. Confirm appliance surge current, battery manufacturer limits and electrical protection with a qualified electrician.</p>
+      </div>
+    </section>
+
     <section id="charts" class="view">
       <div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">ONLINE HISTORICAL TELEMETRY</div><h2 class="titleWithIcon"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>Professional Performance Charts</span></h2><p>PostgreSQL-backed history for both solar inverters, the UPS and the combined estate.</p></div><div class="rangeButtons"><button data-hours="1">1H</button><button data-hours="6">6H</button><button class="active" data-hours="24">24H</button><button data-hours="168">7D</button><button data-hours="720">30D</button></div></div><article class="chartPanel fullChartPanel tall"><div class="chartHead"><div><span>MASTER POWER</span><h3 class="titleWithIcon"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>Solar • Site Demand • Utility Grid • Smart Load</span></h3></div></div><canvas id="fullChart"></canvas></article><div class="threeCharts"><article class="chartPanel"><div class="chartHead"><div><span>SYSTEM 01</span><h3 class="titleWithIcon"><svg class="uiIcon icon-pv14000" aria-hidden="true"><use href="#i-chart"></use></svg><span>PV14000 history</span></h3></div></div><canvas id="fullPv14000Chart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>SYSTEM 02</span><h3 class="titleWithIcon"><svg class="uiIcon icon-pv9000" aria-hidden="true"><use href="#i-chart"></use></svg><span>PV9000 history</span></h3></div></div><canvas id="fullPv9000Chart"></canvas></article><article class="chartPanel"><div class="chartHead"><div><span>SYSTEM 03</span><h3 class="titleWithIcon"><svg class="uiIcon icon-ups" aria-hidden="true"><use href="#i-chart"></use></svg><span>Matrix UPS history</span></h3></div></div><canvas id="fullMatrixChart"></canvas></article></div></div>
     </section>
@@ -637,6 +725,6 @@
     </section>
   </main>
 
-  <script src="dashboard.js?v=32"></script>
+  <script src="dashboard.js?v=35"></script>
 </body>
 </html>

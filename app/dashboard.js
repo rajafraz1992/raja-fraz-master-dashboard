@@ -23,6 +23,9 @@ let notifyStatusData = null;
 const localNotifySent = new Map();
 let ultraEvents = [];
 let ultraLastState = null;
+let toolsInitialized = false;
+let toolsSeededFromLive = false;
+let toolHasSavedPrefs = false;
 
 function set(id, value) { const el = $(id); if (el) el.textContent = value; }
 function uiIcon(name, cls='') { return `<svg class="uiIcon ${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`; }
@@ -261,6 +264,7 @@ async function loadAnalytics(){
     analytics=await response.json();
     renderIntelligenceCenter();
     renderCommandView();
+    renderOperatorTools();
     drawDailyTimeline();
   }catch(_error){analytics=null;set('intelStatus','ANALYTICS OFFLINE');}
 }
@@ -273,8 +277,8 @@ async function loadTimelineHistory(){
   }catch(_error){}
 }
 async function loadTodayEnergy(){
-  if(activeEnergyPeriod==='T' && energy){todayEnergy=energy;renderIntelligenceCenter();return;}
-  try{const r=await fetch('/api/master/energy?period=T',{cache:'no-store'});todayEnergy=await r.json();renderIntelligenceCenter();}catch(_error){}
+  if(activeEnergyPeriod==='T' && energy){todayEnergy=energy;renderIntelligenceCenter();renderOperatorTools();return;}
+  try{const r=await fetch('/api/master/energy?period=T',{cache:'no-store'});todayEnergy=await r.json();renderIntelligenceCenter();renderOperatorTools();}catch(_error){}
 }
 async function loadEnergy(period='T'){
   try{
@@ -283,6 +287,7 @@ async function loadEnergy(period='T'){
     if(period==='T') todayEnergy=energy;
     renderEnergy();
     renderIntelligenceCenter();
+    renderOperatorTools();
   }catch(error){const n=$('energyNotice');if(n){n.hidden=false;n.textContent=`Totals unavailable: ${error.message}`;}}
 }
 
@@ -383,6 +388,7 @@ function render(){
   renderEnergyFlow(a,b,u,c,m);
   renderIntelligenceCenter();
   renderCommandView();
+  renderOperatorTools();
   renderAiLiveContext();
   renderUltraDeck(a,b,u,c,m);
   drawAll();
@@ -827,6 +833,96 @@ function renderUltraDeck(a,b,u,c,m){
 function drawUltraPulse(){
   const canvas=$('ultraPulseChart');if(!canvas)return;const all=mergeHistory().slice(-180);const {ctx,w,h}=canvasSize(canvas);ctx.clearRect(0,0,w,h);const pad={l:6,r:6,t:10,b:12};ctx.strokeStyle='rgba(120,190,215,.10)';ctx.lineWidth=1;for(let i=0;i<4;i++){const yy=pad.t+i*(h-pad.t-pad.b)/3;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();}if(!all.length){ctx.fillStyle='#6f9eb3';ctx.font='11px Segoe UI';ctx.fillText('Collecting live history…',18,h/2);return;}const max=Math.max(1000,...all.flatMap(p=>[finite(p.solarW),finite(p.loadW),Math.abs(finite(p.gridW))]))*1.12;const x=i=>pad.l+(all.length<=1?0:i/(all.length-1))*(w-pad.l-pad.r);const y=v=>pad.t+(max-Math.abs(finite(v)))/max*(h-pad.t-pad.b);const series=[[COLORS.solar,'solarW'],[COLORS.load,'loadW'],['#3ce09b','gridW']];for(const [color,key] of series){ctx.beginPath();all.forEach((p,i)=>{const xx=x(i),yy=y(p[key]);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.strokeStyle=color;ctx.lineWidth=2;ctx.shadowColor=color;ctx.shadowBlur=6;ctx.stroke();ctx.shadowBlur=0;}}
 
+/* =========================================================
+   V35 OPERATOR TOOLKIT - planning, conversion and exports
+   ========================================================= */
+function toolValue(id,fallback=0){const el=$(id);return el?finite(el.value,fallback):fallback;}
+function toolSetInput(id,value){const el=$(id);if(el&&Number.isFinite(Number(value)))el.value=String(Number(value));}
+function toolProgress(id,value){const el=$(id);if(!el)return;const p=Math.max(0,finite(value));el.style.width=`${Math.min(100,p)}%`;el.classList.toggle('warn',p>=80&&p<100);el.classList.toggle('danger',p>=100);}
+function saveToolPrefs(){
+  try{
+    const values=$$('[data-tools-persist]').map((el)=>el.type==='checkbox'?el.checked:el.value);
+    localStorage.setItem('rajaFrazOperatorToolsV35',JSON.stringify({values}));
+  }catch(_error){}
+}
+function restoreToolPrefs(){
+  try{
+    const raw=localStorage.getItem('rajaFrazOperatorToolsV35');if(!raw)return;
+    const data=JSON.parse(raw);if(!Array.isArray(data.values))return;toolHasSavedPrefs=true;
+    $$('[data-tools-persist]').forEach((el,index)=>{const value=data.values[index];if(value==null)return;if(el.type==='checkbox')el.checked=Boolean(value);else el.value=String(value);});
+  }catch(_error){}
+}
+function toolToast(message){const el=$('toolToast');if(!el)return;el.textContent=message;el.classList.add('show');clearTimeout(toolToast.timer);toolToast.timer=setTimeout(()=>el.classList.remove('show'),2600);}
+function liveToolContext(){
+  const systems=live?.systems||{},a=systems.pv14000||null,b=systems.pv9000||null,u=systems.matrix||null,c=systems.combined||{};const m=live?.meter||null;
+  const physical=meterSignedW(m);const grid=physical==null?finite(c.gridW):physical;
+  const solar=finite(c.solarW,finite(a?.solarW)+finite(b?.solarW));const demand=finite(c.siteDemandW,finite(a?.loadW)+finite(b?.loadW));
+  return{systems,a,b,u,c,m,grid,physical,solar,demand};
+}
+function renderOperatorTools(){
+  if(!$('tools'))return;
+  const x=liveToolContext();
+  if(live&&!toolHasSavedPrefs&&!toolsSeededFromLive){
+    if(x.u?.batteryPct!=null)toolSetInput('toolBatterySoc',Math.round(finite(x.u.batteryPct)));
+    if(finite(x.u?.loadW)>0)toolSetInput('toolBatteryLoad',Math.round(finite(x.u.loadW)));
+    const todaySolar=finite(todayEnergy?.combined?.solarKwh,finite(x.c?.todaySolar));if(todaySolar>0)toolSetInput('toolDailySolar',todaySolar.toFixed(1));
+    toolsSeededFromLive=true;
+  }
+
+  set('toolLiveSolar',live?fmtPower(x.solar):'--');set('toolLiveSolarSub',`${Math.round(clamp(x.solar/11140*100))}% of 11.14 kWp`);
+  set('toolLiveDemand',live?fmtPower(x.demand):'--');
+  set('toolLiveGrid',live?fmtGridSigned(x.grid):'--');set('toolLiveGridSub',x.m?.online?'Tuya physical meter':'Inverter estimate');
+  set('toolLiveBattery',x.u?fmtPct(x.u.batteryPct):'--');set('toolLiveBatterySub',x.u?`${batteryFlowMode(x.u.batteryW,x.u.batteryMode)} • ${fmtPower(x.u.loadW)} load`:'Matrix unavailable');
+
+  const extraLoad=toolValue('toolExtraLoad'),extraSolar=toolValue('toolExtraSolar');const projectedGrid=x.grid+extraLoad-extraSolar;const projectedDemand=x.demand+extraLoad;const projectedSolar=x.solar+extraSolar;
+  const isImport=projectedGrid>=0,limit=isImport?5000:6000,used=Math.abs(projectedGrid),headroom=limit-used;
+  set('toolProjectedGrid',live?fmtGridSigned(projectedGrid):'WAITING FOR LIVE');set('toolScenarioEquation',`${fmtGridSigned(x.grid)} + ${fmtPower(extraLoad)} load − ${fmtPower(extraSolar)} solar`);
+  set('toolProjectedDemand',fmtPower(projectedDemand));set('toolProjectedSolar',fmtPower(projectedSolar));set('toolProjectedHeadroom',headroom>=0?fmtPower(headroom):`OVER ${fmtPower(-headroom)}`);
+  set('toolScenarioGuard',`${isImport?'Night import':'Day export'} guard • ${Math.round(used/limit*100)}% of ${fmtPower(limit)}`);toolProgress('toolScenarioBar',used/limit*100);
+  const projected=$('toolProjectedGrid');if(projected){projected.classList.toggle('importing',isImport&&used>=30);projected.classList.toggle('exporting',!isImport&&used>=30);projected.classList.toggle('over',used>limit);}
+
+  let plannedLoad=0;$$('[data-tool-load]').forEach((row)=>{const on=row.querySelector('[data-load-on]')?.checked;const qty=finite(row.querySelector('[data-load-qty]')?.value,1);const watts=finite(row.querySelector('[data-load-watts]')?.value);const subtotal=on?qty*watts:0;plannedLoad+=subtotal;row.classList.toggle('selected',Boolean(on));row.dataset.subtotal=String(subtotal);});
+  set('toolLoadTotal',fmtPower(plannedLoad));
+  [['toolCap14000','toolCap14000Text',10000],['toolCap9000','toolCap9000Text',6000],['toolCapMatrix','toolCapMatrixText',6000]].forEach(([bar,textId,capacity])=>{const p=plannedLoad/capacity*100;toolProgress(bar,p);set(textId,`${Math.round(p)}%`);});
+  const loadAdvice=plannedLoad>10000?'Stack exceeds every inverter rating — split or sequence these loads.':plannedLoad>6000?'Fits PV14000 rating only; above PV9000 and Matrix 6 kW ratings.':plannedLoad>4800?'High on both 6 kW systems; allow motor/compressor surge margin.':plannedLoad>0?'Comfortable planning range; confirm starting surge before switching.':'Select loads to build a switching plan.';set('toolLoadAdvice',loadAdvice);
+
+  const capacity=toolValue('toolBatteryKwh',5),soc=clamp(toolValue('toolBatterySoc',80)),eff=clamp(toolValue('toolBatteryEff',90),1,100),backupLoad=toolValue('toolBatteryLoad',1000);const usable=capacity*(soc/100)*(eff/100);const runtime=backupLoad>0?usable/(backupLoad/1000):0;
+  set('toolBatteryRuntime',runtime>0?fmtDuration(runtime):'--');set('toolBatteryEnergy',`${usable.toFixed(2)} kWh usable • ${fmtPower(backupLoad)} load`);
+
+  const dailySolar=toolValue('toolDailySolar',30),selfUse=clamp(toolValue('toolSelfUse',70)),importTariff=toolValue('toolImportTariff',65),exportTariff=toolValue('toolExportTariff',27),days=Math.max(1,toolValue('toolSavingsDays',30));const selfKwh=dailySolar*selfUse/100*days,exportKwh=dailySolar*(1-selfUse/100)*days;const selfValue=selfKwh*importTariff,exportValue=exportKwh*exportTariff;
+  set('toolSavingsValue',fmtPkr(selfValue+exportValue));set('toolSavingsSplit',`${selfKwh.toFixed(1)} kWh self-use + ${exportKwh.toFixed(1)} kWh export over ${Math.round(days)} days`);
+
+  const watts=toolValue('toolConvertWatts',5000),volts=Math.max(1,toolValue('toolConvertVolts',230)),phase=toolValue('toolConvertPhase',1),pf=clamp(toolValue('toolConvertPf',1),.1,1);const amps=phase===3?watts/(Math.sqrt(3)*volts*pf):watts/(volts*pf);const energyKwh=toolValue('toolConvertKwh',10),tariff=toolValue('toolConvertTariff',65);
+  set('toolConvertAmps',`${amps.toFixed(2)} A`);set('toolConvertCost',fmtPkr(energyKwh*tariff));
+
+  const sourceCount=[x.a,x.b,x.u,x.m?.online?x.m:null].filter(Boolean).length;const recon=x.physical==null?null:Math.abs(x.physical-finite(x.c.gridW));const balance=x.physical==null?null:x.solar+x.physical-x.demand;const attention=sourceCount<4||(recon!=null&&recon>500)||(balance!=null&&Math.abs(balance)>750);
+  set('toolDiagSources',`${sourceCount}/4 available`);set('toolDiagGrid',x.m?.online?'TUYA PHYSICAL':'INVERTER ESTIMATE');set('toolDiagRecon',recon==null?'Unknown':fmtPower(recon));set('toolDiagBalance',balance==null?'Unknown':fmtSignedPower(balance));set('toolDiagState',attention?'REVIEW':'NOMINAL');
+  const state=$('toolDiagState');if(state){state.classList.toggle('warn',attention);state.classList.toggle('good',!attention);}
+}
+function operatorSnapshot(){
+  const x=liveToolContext();const recon=x.physical==null?null:Math.abs(x.physical-finite(x.c.gridW));const balance=x.physical==null?null:x.solar+x.physical-x.demand;
+  return{generatedAt:new Date().toISOString(),timezone:'Asia/Karachi',monitoringOnly:true,site:{solarW:x.solar,demandW:x.demand,physicalGridW:x.physical,gridEstimateW:finite(x.c.gridW),gridMode:x.m?.online?x.m.mode:gridMode(x.c.gridW),todaySolarKwh:finite(todayEnergy?.combined?.solarKwh,finite(x.c.todaySolar))},systems:{pv14000:{online:Boolean(x.a),solarW:finite(x.a?.solarW),loadW:finite(x.a?.loadW),updatedAt:x.a?.updatedAt||null},pv9000:{online:Boolean(x.b),solarW:finite(x.b?.solarW),loadW:finite(x.b?.loadW),smartLoadW:finite(x.b?.smartLoadW),updatedAt:x.b?.updatedAt||null},matrix:{online:Boolean(x.u),loadW:finite(x.u?.loadW),acInputW:finite(x.u?.acInputW),batteryPct:x.u?.batteryPct??null,batteryW:finite(x.u?.batteryW),updatedAt:x.u?.updatedAt||null},tuya:{online:Boolean(x.m?.online),mode:x.m?.mode||null,importW:finite(x.m?.importW),exportW:finite(x.m?.exportW),voltage:x.m?.voltage??null,currentA:x.m?.currentA??null,powerFactor:x.m?.powerFactor??null,updatedAt:x.m?.updatedAt||null}},diagnostics:{meterInverterDifferenceW:recon,powerBalanceErrorW:balance}};
+}
+function operatorSummary(snapshot=operatorSnapshot()){
+  const s=snapshot.site,u=snapshot.systems.matrix,t=snapshot.systems.tuya,d=snapshot.diagnostics;
+  return[`RAJA FRAZ MASTER • LIVE OPERATOR SNAPSHOT`,`Time: ${new Date(snapshot.generatedAt).toLocaleString('en-PK',{timeZone:'Asia/Karachi'})} PKT`,`Solar: ${fmtPower(s.solarW)}`,`Site demand: ${fmtPower(s.demandW)}`,`Grid: ${s.physicalGridW==null?'Tuya unavailable':fmtGridSigned(s.physicalGridW)}`,`UPS battery: ${u.batteryPct==null?'--':fmtPct(u.batteryPct)} • load ${fmtPower(u.loadW)}`,`Tuya: ${t.online?'ONLINE':'OFFLINE'}${t.voltage!=null?` • ${finite(t.voltage).toFixed(1)} V`:''}`,`Reconciliation: ${d.meterInverterDifferenceW==null?'--':fmtPower(d.meterInverterDifferenceW)}`,`Power balance error: ${d.powerBalanceErrorW==null?'--':fmtSignedPower(d.powerBalanceErrorW)}`,'Monitoring only • No control command issued'].join('\n');
+}
+function downloadToolFile(name,content,type){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function snapshotCsv(s=operatorSnapshot()){
+  const rows=[['generatedAt','solarW','demandW','physicalGridW','gridEstimateW','gridMode','pv14000Online','pv14000SolarW','pv9000Online','pv9000SolarW','matrixOnline','matrixLoadW','batteryPct','tuyaOnline','voltage','powerFactor','reconciliationW','balanceErrorW'],[s.generatedAt,s.site.solarW,s.site.demandW,s.site.physicalGridW??'',s.site.gridEstimateW,s.site.gridMode,s.systems.pv14000.online,s.systems.pv14000.solarW,s.systems.pv9000.online,s.systems.pv9000.solarW,s.systems.matrix.online,s.systems.matrix.loadW,s.systems.matrix.batteryPct??'',s.systems.tuya.online,s.systems.tuya.voltage??'',s.systems.tuya.powerFactor??'',s.diagnostics.meterInverterDifferenceW??'',s.diagnostics.powerBalanceErrorW??'']];return rows.map(row=>row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+}
+async function copyOperatorSummary(){const text=operatorSummary();try{await navigator.clipboard.writeText(text);}catch(_error){const area=document.createElement('textarea');area.value=text;document.body.appendChild(area);area.select();document.execCommand('copy');area.remove();}toolToast('Live summary copied');}
+function initOperatorTools(){
+  if(toolsInitialized)return;toolsInitialized=true;restoreToolPrefs();
+  $$('[data-tools-persist]').forEach((el)=>el.addEventListener('input',()=>{saveToolPrefs();renderOperatorTools();}));
+  $('toolScenarioReset')?.addEventListener('click',()=>{toolSetInput('toolExtraLoad',0);toolSetInput('toolExtraSolar',0);saveToolPrefs();renderOperatorTools();});
+  $('toolCopySnapshot')?.addEventListener('click',copyOperatorSummary);
+  $('toolDownloadJson')?.addEventListener('click',()=>{downloadToolFile(`raja-fraz-snapshot-${pkToday()}.json`,JSON.stringify(operatorSnapshot(),null,2),'application/json');toolToast('JSON snapshot downloaded');});
+  $('toolDownloadCsv')?.addEventListener('click',()=>{downloadToolFile(`raja-fraz-snapshot-${pkToday()}.csv`,snapshotCsv(),'text/csv');toolToast('CSV snapshot downloaded');});
+  $('toolPrintReport')?.addEventListener('click',()=>window.print());
+  renderOperatorTools();
+}
+
 function canvasSize(canvas){const r=canvas.getBoundingClientRect();const dpr=window.devicePixelRatio||1;canvas.width=Math.max(1,Math.round(r.width*dpr));canvas.height=Math.max(1,Math.round(r.height*dpr));const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,w:r.width,h:r.height};}
 function drawLineChart(id,series,{signed=false}={}){
   const canvas=$(id);if(!canvas)return;const{ctx,w,h}=canvasSize(canvas);ctx.clearRect(0,0,w,h);const pad={l:42,r:16,t:17,b:27};const values=series.flatMap(s=>s.data.map(p=>finite(p.v)));if(!values.length){ctx.fillStyle='#7893a5';ctx.font='12px Segoe UI';ctx.fillText('History will appear as samples are collected.',pad.l,h/2);return;}
@@ -863,6 +959,7 @@ function drawAll(){
 
 async function start(){
   initTuyaPickers();
+  initOperatorTools();
   await wakeMasterSources();
   await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadAnalytics(),loadTimelineHistory(),loadWeather(),loadTuyaQuickTotals(),loadAiStatus(),loadNotificationStatus()]);
   if(!todayEnergy)todayEnergy=energy?.period==='T'?energy:null;
