@@ -282,6 +282,15 @@
                   <feGaussianBlur stdDeviation="3" result="blur"></feGaussianBlur>
                   <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
                 </filter>
+                <marker id="flowArrowSolar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#e8a400"></path></marker>
+                <marker id="flowArrowPv9000" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#7b5cff"></path></marker>
+                <marker id="flowArrowImport" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#d93e4d"></path></marker>
+                <marker id="flowArrowExport" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#1aa26f"></path></marker>
+                <marker id="flowArrowLoad" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#2387d9"></path></marker>
+                <marker id="flowArrowSmart" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#ef8d24"></path></marker>
+                <marker id="flowArrowUps" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#14a7a6"></path></marker>
+                <marker id="flowArrowCharge" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#1aa26f"></path></marker>
+                <marker id="flowArrowDischarge" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#d93e4d"></path></marker>
               </defs>
               <path id="flowPv14000Line" class="flowLine flowSolar" d="M250 170 C250 240 420 255 520 320"></path>
               <path id="flowPv9000Line" class="flowLine flowSolar pv9000Color" d="M750 170 C720 245 615 260 545 320"></path>
@@ -295,53 +304,53 @@
             </svg>
 
             <div class="flowNode nodePv14000" id="flowNodePv14000">
-              <div class="flowNodeIcon icon-pv14000"><svg class="uiIcon"><use href="#i-inverter"></use></svg></div>
-              <span>System 01</span><strong>FRONUS META 10KW</strong><b id="flowPv14000Value">--</b><small id="flowPv14000Sub">PV14000 • 6.78 kWp</small>
+              <div class="flowNodeMedia"><img src="assets/flow-devices/pv14000.png" alt="Fronus Meta 10KW PV14000 inverter" loading="lazy" decoding="async"></div>
+              <div class="flowNodeCopy"><span>System 01 • PV14000</span><strong>FRONUS META 10KW</strong><b id="flowPv14000Value">--</b><small id="flowPv14000Sub">6.78 kWp solar array</small></div>
             </div>
 
             <div class="flowNode nodePv9000" id="flowNodePv9000">
-              <div class="flowNodeIcon icon-pv9000"><svg class="uiIcon"><use href="#i-inverter"></use></svg></div>
-              <span>System 02</span><strong>FRONUS META 6KW</strong><b id="flowPv9000Value">--</b><small id="flowPv9000Sub">PV9000 • feeds UPS + Smart</small>
+              <div class="flowNodeMedia"><img src="assets/flow-devices/pv9000.png" alt="Fronus Meta 6KW PV9000 inverter" loading="lazy" decoding="async"></div>
+              <div class="flowNodeCopy"><span>System 02 • PV9000</span><strong>FRONUS META 6KW</strong><b id="flowPv9000Value">--</b><small id="flowPv9000Sub">4.36 kWp • UPS + Smart</small></div>
             </div>
 
             <div class="flowNode nodeGrid" id="flowNodeGrid">
-              <div class="flowNodeIcon icon-grid"><svg class="uiIcon"><use href="#i-grid"></use></svg></div>
-              <span>Utility</span><strong>WAPDA / Grid</strong><b id="flowGridValue">--</b><small id="flowGridSub">Physical meter source</small>
+              <div class="flowNodeMedia"><img src="assets/flow-devices/utility-grid.png" alt="Utility electricity transmission tower" loading="lazy" decoding="async"></div>
+              <div class="flowNodeCopy"><span>Utility exchange</span><strong>WAPDA / Grid</strong><b id="flowGridValue">--</b><small id="flowGridSub">Physical meter source</small></div>
             </div>
 
             <div class="flowNode nodeMeter" id="flowNodeMeter">
-              <div class="flowNodeIcon icon-meter"><svg class="uiIcon"><use href="#i-meter"></use></svg></div>
-              <span>Physical meter</span><strong>Tuya Smart Life</strong><b id="flowMeterValue">--</b><small id="flowMeterSub">Voltage / current</small>
+              <div class="flowNodeMedia"><img src="assets/flow-devices/tuya-meter.png" alt="Tuya Smart Life bidirectional physical energy meter" loading="lazy" decoding="async"></div>
+              <div class="flowNodeCopy"><span>Physical CT meter</span><strong>Tuya Smart Life</strong><b id="flowMeterValue">--</b><small id="flowMeterSub">Import / export truth</small></div>
             </div>
 
             <div class="flowNode nodeBus mainBus" id="flowNodeBus">
-              <div class="flowNodeIcon icon-smart"><svg class="uiIcon"><use href="#i-bolt"></use></svg></div>
-              <span>Master bus</span><strong>Total Solar Estate</strong><b id="flowBusValue">--</b><small id="flowBusSub">PV14000 + PV9000</small>
+              <div class="flowNodeMedia"><img src="assets/flow-devices/distribution-bus.png" alt="Solar AC distribution board representing the master bus" loading="lazy" decoding="async"></div>
+              <div class="flowNodeCopy"><span>Master AC bus</span><strong>Total Solar Estate</strong><b id="flowBusValue">--</b><small id="flowBusSub">PV14000 + PV9000</small></div>
             </div>
 
             <div class="flowNode nodeSiteLoad" id="flowNodeSiteLoad">
-              <div class="flowNodeIcon icon-load"><svg class="uiIcon"><use href="#i-load"></use></svg></div>
-              <span>Upstream demand</span><strong>Main site load</strong><b id="flowSiteLoadValue">--</b><small>No UPS double-count</small>
+              <div class="flowNodeMedia cover"><img src="assets/flow-devices/site-load-house.png" alt="Main estate building load" loading="lazy" decoding="async"></div>
+              <div class="flowNodeCopy"><span>Upstream demand</span><strong>Main Estate Load</strong><b id="flowSiteLoadValue">--</b><small>No UPS double-count</small></div>
             </div>
 
             <div class="flowNode nodeSmartLoad" id="flowNodeSmartLoad">
-              <div class="flowNodeIcon icon-smart"><svg class="uiIcon"><use href="#i-smart"></use></svg></div>
-              <span>Smart output</span><strong>AC / Motor Load</strong><b id="flowSmartValue">--</b><small>Direct from PV9000</small>
+              <div class="flowNodeMedia"><img src="assets/flow-devices/smart-load-motor.png" alt="Electric motor on the PV9000 smart load output" loading="lazy" decoding="async"></div>
+              <div class="flowNodeCopy"><span>Smart output</span><strong>AC / Motor Load</strong><b id="flowSmartValue">--</b><small>Direct from PV9000</small></div>
             </div>
 
             <div class="flowNode nodeMatrix" id="flowNodeMatrix">
-              <div class="flowNodeIcon icon-ups"><svg class="uiIcon"><use href="#i-ups"></use></svg></div>
-              <span>System 03</span><strong>Matrix 6KW UPS</strong><b id="flowMatrixValue">--</b><small id="flowMatrixSub">AC input from PV9000</small>
+              <div class="flowNodeMedia"><img src="assets/flow-devices/matrix.png" alt="Fronus Matrix 6KW UPS inverter" loading="lazy" decoding="async"></div>
+              <div class="flowNodeCopy"><span>System 03 • UPS</span><strong>Fronus Matrix 6KW</strong><b id="flowMatrixValue">--</b><small id="flowMatrixSub">AC input from PV9000</small></div>
             </div>
 
             <div class="flowNode nodeBackup" id="flowNodeBackup">
-              <div class="flowNodeIcon icon-load"><svg class="uiIcon"><use href="#i-load"></use></svg></div>
-              <span>Backup output</span><strong>UPS Load</strong><b id="flowBackupValue">--</b><small>Matrix protected load</small>
+              <div class="flowNodeMedia"><img src="assets/flow-devices/backup-load-fridge.png" alt="Battery-backed essential appliance load" loading="lazy" decoding="async"></div>
+              <div class="flowNodeCopy"><span>Protected output</span><strong>Essential UPS Load</strong><b id="flowBackupValue">--</b><small>Matrix protected circuit</small></div>
             </div>
 
             <div class="flowNode nodeBattery" id="flowNodeBattery">
-              <div class="flowNodeIcon icon-battery"><svg class="uiIcon"><use href="#i-battery"></use></svg></div>
-              <span>UPS storage</span><strong>Battery Bank</strong><b id="flowBatteryValue">--</b><small id="flowBatterySub">SOC / power</small>
+              <div class="flowNodeMedia"><img src="assets/flow-devices/battery-bank.png" alt="Lithium battery storage bank" loading="lazy" decoding="async"></div>
+              <div class="flowNodeCopy"><span>UPS storage</span><strong>Battery Bank</strong><b id="flowBatteryValue">--</b><small id="flowBatterySub">SOC / bidirectional power</small></div>
             </div>
 
             <div class="flowLabel labelPv14000"><span>PV14000 → Bus</span><b id="flowPv14000LineText">--</b></div>

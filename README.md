@@ -1,3 +1,20 @@
+# Raja Fraz Master Solar Dashboard - V33 DEVICE PHOTO FLOW
+
+V33 keeps the complete V32 ULTRA PRO MAX dashboard and rebuilds the **Energy Flow** tab around the real physical topology. Every live hardware/load node now has a local PNG visual, clearer source-to-destination routing, colored arrowheads and the existing direction-aware animation.
+
+## V33 highlights
+- Real product visuals for **Fronus Meta 10KW PV14000**, **Fronus Meta 6KW PV9000**, **Fronus Matrix 6KW UPS** and the **Tuya bidirectional physical meter**.
+- PNG visuals for the WAPDA utility grid, master AC distribution bus, main estate load, PV9000 smart motor load, essential UPS load and battery bank.
+- Enlarged premium device cards with readable live power, status and sub-metrics.
+- Explicit colored arrowheads for solar, grid import/export, site demand, smart load, internal PV9000 → Matrix feed, UPS output and bidirectional battery power.
+- Correct topology preserved: Matrix AC input remains an internal PV9000 transfer and is not counted as utility-grid import.
+- Responsive mobile Flow layout keeps every device photo and live reading visible without the desktop routing canvas.
+- Image-source ledger included in `IMAGE-SOURCES.md`.
+
+No new required environment variables are needed for V33.
+
+---
+
 # Raja Fraz Master Solar Dashboard - V32 ULTRA PRO MAX
 
 V32 keeps the complete V31 AI + notification center and adds a premium **ULTRA Mission Control** layer without changing any inverter, Tuya breaker, Smart Life protection or electrical control setting.

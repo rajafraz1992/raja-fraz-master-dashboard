@@ -127,3 +127,47 @@ main{padding-bottom:30px}.view{display:none;padding:14px 16px 24px;max-width:190
 .missionLowerGrid{display:grid;grid-template-columns:1.35fr .92fr .92fr;gap:12px;margin-bottom:12px}.ultraAssetGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.ultraAsset{border:1px solid rgba(104,177,202,.14);border-radius:10px;padding:10px;background:rgba(4,27,42,.52);display:grid;grid-template-columns:auto 1fr auto;gap:4px 9px;align-items:center}.ultraAssetIcon{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:#0a3a55;border:1px solid rgba(102,200,230,.16);font-size:16px}.ultraAssetName b{display:block;color:#fff;font-size:10px}.ultraAssetName span{font-size:7px;color:#6f9eb3}.ultraAssetState{font-size:7px;font-weight:950;border-radius:999px;padding:4px 6px;color:#60e9a6;background:rgba(38,197,126,.12)}.ultraAssetState.off{color:#ff7887;background:rgba(230,62,82,.12)}.ultraAssetMetrics{grid-column:2/4;display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.ultraAssetMetrics span{font-size:6px;color:#6e99ad;display:block}.ultraAssetMetrics b{font-size:9px;color:#cdebf6;display:block;margin-top:2px}.ultraEventStream,.ultraOpsList{max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:6px}.ultraEvent{border-left:2px solid #43d49a;background:rgba(5,31,47,.68);border-radius:0 8px 8px 0;padding:8px}.ultraEvent.warn{border-left-color:#ffd05e}.ultraEvent.danger{border-left-color:#ff6173}.ultraEvent b{display:block;font-size:9px;color:#d9f4ff}.ultraEvent span{font-size:7px;color:#6f9eb3}.eventLive{color:#59eaa8!important}.ultraOp{display:grid;grid-template-columns:25px 1fr;gap:8px;align-items:start;border:1px solid rgba(104,177,202,.13);border-radius:9px;padding:8px;background:rgba(4,27,42,.52)}.ultraOp>i{font-style:normal;width:25px;height:25px;border-radius:7px;background:#0c3c55;display:grid;place-items:center}.ultraOp b{font-size:9px;color:#e8f9ff;display:block}.ultraOp span{font-size:7px;color:#709bae;line-height:1.4;display:block;margin-top:2px}.priorityBadge{font-size:7px!important;color:#58e9a5!important;border:1px solid rgba(75,230,160,.22);border-radius:999px;padding:5px 7px}.priorityBadge.warn{color:#ffd05e!important}.priorityBadge.danger{color:#ff7585!important}.ultraEmpty{font-size:8px;color:#6f9eb3;padding:15px;text-align:center}.missionKpiGrid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.missionKpiGrid>div{padding:10px 11px}.missionKpiGrid span{display:block;font-size:6px;color:#6e99ad;letter-spacing:.12em;font-weight:950}.missionKpiGrid b{display:block;font-size:14px;color:#fff;margin:4px 0 2px}.missionKpiGrid small{font-size:7px;color:#6f9eb3}
 @media(max-width:1200px){.ultraStatusRibbon{grid-template-columns:1fr repeat(2,1fr)}.ultraStatusRibbon>div:nth-child(4),.ultraStatusRibbon>div:nth-child(5){display:none}.missionHeroGrid{grid-template-columns:1fr 2fr}.missionEfficiencyCard{grid-column:1/-1}.missionLowerGrid{grid-template-columns:1fr 1fr}.assetPanel{grid-column:1/-1}.missionKpiGrid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:760px){.ultraStatusRibbon{grid-template-columns:1fr 1fr}.ultraStatusRibbon>div{display:none}.ultraStatusRibbon>.ultraRibbonLead,.ultraStatusRibbon>.ultraRibbonAction{display:flex}.missionShell{padding:11px}.missionTop{flex-direction:column}.missionTop h2{font-size:24px}.missionHeroGrid,.missionMidGrid,.missionLowerGrid{grid-template-columns:1fr}.missionEfficiencyCard{grid-column:auto}.ultraAssetGrid{grid-template-columns:1fr}.missionKpiGrid{grid-template-columns:repeat(2,1fr)}.pulseStats{grid-template-columns:repeat(2,1fr)}.missionActions{width:100%;justify-content:space-between}}
+
+/* =========================================================
+   V33 DEVICE PHOTO FLOW MAP - real hardware + clear routing
+   ========================================================= */
+.energyFlowBoard{border-radius:16px;box-shadow:0 16px 42px rgba(8,43,67,.12)}
+.flowBoardHeader{padding:18px 20px;background:linear-gradient(135deg,#fff 0%,#f5fbfe 58%,#fff8e8 100%)}
+.flowMap{min-height:860px;background:radial-gradient(circle at 43% 49%,rgba(246,181,38,.13),transparent 20%),radial-gradient(circle at 69% 60%,rgba(20,167,166,.09),transparent 21%),linear-gradient(180deg,#fbfeff,#eef8fc)}
+.flowMap::before{background-size:38px 38px;opacity:.82}
+.flowLine{stroke-width:9;stroke-dasharray:3 14;opacity:.68}
+.flowLine.active{stroke-width:11;stroke-dasharray:20 15;animation-duration:1s}
+#flowPv14000Line.active{marker-end:url(#flowArrowSolar)}
+#flowPv9000Line.active{marker-end:url(#flowArrowPv9000)}
+#flowGridMeterLine.active.importing,#flowMeterBusLine.active.importing{marker-end:url(#flowArrowImport)}
+#flowGridMeterLine.active.exporting,#flowMeterBusLine.active.exporting{marker-start:url(#flowArrowExport);marker-end:none}
+#flowSiteLoadLine.active{marker-end:url(#flowArrowLoad)}
+#flowPv9000SmartLine.active,#flowPv9000MatrixLine.active{marker-end:url(#flowArrowSmart)}
+#flowMatrixBackupLine.active{marker-end:url(#flowArrowUps)}
+#flowBatteryLine.active.discharging{marker-end:url(#flowArrowDischarge)}
+#flowBatteryLine.active.charging{marker-start:url(#flowArrowCharge);marker-end:none}
+.flowNode{width:218px;min-height:148px;padding:10px;display:grid;grid-template-columns:82px minmax(0,1fr);align-items:center;gap:10px;border-radius:17px;background:rgba(255,255,255,.97);box-shadow:0 14px 34px rgba(8,43,67,.13);overflow:hidden}
+.flowNode::after{left:12px;right:12px;height:5px}
+.flowNode.active{box-shadow:0 16px 38px rgba(8,43,67,.16),0 0 0 3px rgba(26,162,111,.08)}
+.flowNodeMedia{width:82px;height:104px;border:1px solid #dce9ef;border-radius:13px;background:#fff;display:grid;place-items:center;overflow:hidden;position:relative}
+.flowNodeMedia::after{content:"";position:absolute;inset:auto 8px 4px;height:6px;border-radius:50%;background:rgba(8,43,67,.10);filter:blur(4px)}
+.flowNodeMedia img{position:relative;z-index:1;width:100%;height:100%;object-fit:contain;display:block}
+.flowNodeMedia.cover img{object-fit:cover}
+.flowNodeCopy{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:3px}
+.flowNodeCopy span{font-size:7px;line-height:1.25}
+.flowNodeCopy strong{font-size:12px;line-height:1.18}
+.flowNodeCopy b{font-size:20px;line-height:1.05;margin-top:3px;white-space:nowrap}
+.flowNodeCopy small{font-size:8px;line-height:1.3}
+.mainBus{width:238px;min-height:158px;grid-template-columns:92px minmax(0,1fr);border:2px solid #f1c35d;background:linear-gradient(145deg,#fff9e9,#fff)}
+.mainBus .flowNodeMedia{width:92px;height:112px;border-color:#f0d79a}
+.mainBus .flowNodeCopy b{font-size:25px;color:#d99300}
+.nodePv14000{left:20.8%;top:16.7%}.nodePv9000{left:62.5%;top:16.7%}.nodeGrid{left:8.3%;top:50%}.nodeMeter{left:25%;top:50%}.nodeBus{left:44.2%;top:50%}.nodeSiteLoad{left:44.2%;top:83.4%}.nodeSmartLoad{left:87.5%;top:35.5%}.nodeMatrix{left:65%;top:58.4%}.nodeBackup{left:87.5%;top:70%}.nodeBattery{left:65%;top:86.8%}
+.flowLabel{z-index:5;border-radius:10px;padding:7px 10px;background:rgba(255,255,255,.96);box-shadow:0 7px 18px rgba(8,43,67,.08);backdrop-filter:blur(5px)}
+.flowLabel b{font-size:13px}.flowLabel.solar,.flowLabel.smart,.flowLabel.ups,.flowLabel.gridImport,.flowLabel.gridExport,.flowLabel.batteryCharge,.flowLabel.batteryDischarge{border-width:2px}
+.flowLabel.solar{border-color:#f3cc6b}.flowLabel.smart{border-color:#f5bd82}.flowLabel.ups{border-color:#83d7d6}.flowLabel.gridImport{border-color:#efadb5}.flowLabel.gridExport{border-color:#9fdbc7}.flowLabel.batteryCharge,.flowLabel.batteryDischarge{border-color:#addfce}
+.flowSequenceStep.live{background:linear-gradient(135deg,#fffdf7,#f5fcf9)}
+.flowSequenceStep.live b{box-shadow:0 0 0 4px rgba(246,181,38,.10)}
+@media(max-width:1450px){.flowNode{width:196px;grid-template-columns:72px minmax(0,1fr);gap:8px}.flowNodeMedia{width:72px;height:94px}.mainBus{width:215px;grid-template-columns:80px minmax(0,1fr)}.mainBus .flowNodeMedia{width:80px;height:102px}.flowNodeCopy strong{font-size:11px}.flowNodeCopy b{font-size:18px}.flowLabel{transform:scale(.88);transform-origin:left top}}
+@media(max-width:1100px) and (min-width:901px){.flowMap{min-height:790px}.flowNode{width:178px;grid-template-columns:62px minmax(0,1fr);padding:8px}.flowNodeMedia{width:62px;height:84px}.mainBus{width:196px;grid-template-columns:70px minmax(0,1fr)}.mainBus .flowNodeMedia{width:70px;height:92px}.flowNodeCopy b{font-size:16px}.flowNodeCopy small{font-size:7px}.flowLabel{transform:scale(.76)}}
+@media(max-width:900px){.flowMap{min-height:auto;padding:12px}.flowNode{position:relative;left:auto!important;top:auto!important;transform:none;width:100%;min-height:132px;grid-template-columns:112px minmax(0,1fr);padding:10px}.flowNodeMedia,.mainBus .flowNodeMedia{width:112px;height:108px}.mainBus{width:100%;grid-template-columns:112px minmax(0,1fr)}.flowNodeCopy strong{font-size:13px}.flowNodeCopy b,.mainBus .flowNodeCopy b{font-size:22px}.flowNodeCopy small{font-size:9px}}
+@media(max-width:520px){.flowNode,.mainBus{grid-template-columns:90px minmax(0,1fr)}.flowNodeMedia,.mainBus .flowNodeMedia{width:90px;height:92px}.flowBoardHeader{padding:15px}.flowLegend{gap:8px}.flowSequenceStep{padding:12px}}
