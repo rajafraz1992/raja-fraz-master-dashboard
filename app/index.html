@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#082b43">
   <title>Raja Fraz Master Solar Command Center</title>
-  <link rel="stylesheet" href="styles.css?v=31">
+  <link rel="stylesheet" href="styles.css?v=32">
 </head>
 <body>
   <svg class="iconSprite" aria-hidden="true" focusable="false">
@@ -44,6 +44,7 @@
   <nav class="topbar">
     <div class="navtabs">
       <button class="navtab active" data-view="dashboard"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-dashboard"></use></svg><span>Dashboard</span></button>
+      <button class="navtab ultraNav" data-view="mission"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-bolt"></use></svg><span>ULTRA</span><em>LIVE</em></button>
       <button class="navtab" data-view="pv14000"><svg class="uiIcon icon-solar" aria-hidden="true"><use href="#i-sun"></use></svg><span>PV14000</span></button>
       <button class="navtab" data-view="pv9000"><svg class="uiIcon icon-solar" aria-hidden="true"><use href="#i-sun"></use></svg><span>PV9000</span></button>
       <button class="navtab" data-view="matrix"><svg class="uiIcon icon-ups" aria-hidden="true"><use href="#i-ups"></use></svg><span>UPS Matrix</span></button>
@@ -79,6 +80,15 @@
       <div class="sectionIntro">
         <div><div class="eyebrow">LIVE SITE OVERVIEW</div><h2 class="titleWithIcon"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-dashboard"></use></svg><span>Three inverters. One command center.</span></h2><p>PV14000 + PV9000 generate solar. Matrix operates as the downstream UPS.</p></div>
         <div class="freshness"><span>Dashboard poll <b>10s</b></span><span>Matrix cloud frame <b>~60s</b></span><span id="historyChip">History • checking</span></div>
+      </div>
+
+      <div class="ultraStatusRibbon" id="ultraRibbonOpen" title="Open ULTRA Mission Control">
+        <div class="ultraRibbonLead"><span class="ultraLiveDot"></span><div><small>ULTRA COMMAND DECK</small><b>MISSION CONTROL</b></div></div>
+        <div><span>System score</span><b id="ribbonScore">--</b></div>
+        <div><span>Solar coverage</span><b id="ribbonCoverage">--</b></div>
+        <div><span>Grid independence</span><b id="ribbonIndependence">--</b></div>
+        <div><span>Data confidence</span><b id="ribbonConfidence">--</b></div>
+        <div class="ultraRibbonAction"><span>Open</span><b>ULTRA →</b></div>
       </div>
 
       <div class="smartGuardStrip">
@@ -353,6 +363,99 @@
       </div>
     </section>
 
+
+    <section id="mission" class="view missionView">
+      <div class="missionShell">
+        <div class="missionBackdrop"><i></i><i></i><i></i></div>
+        <div class="missionTop">
+          <div>
+            <div class="missionEyebrow"><span class="ultraLiveDot"></span> RAJA FRAZ • ULTRA PRO MAX • LIVE OPERATIONS</div>
+            <h2>Solar Estate Mission Control</h2>
+            <p>Real-time power intelligence, asset health, power quality, guardrails, trends and operator events in one control-room surface.</p>
+          </div>
+          <div class="missionActions">
+            <span class="missionState good" id="ultraMissionState">SYSTEM NOMINAL</span>
+            <button type="button" id="ultraFullscreen">⛶ FULL SCREEN</button>
+          </div>
+        </div>
+
+        <div class="missionHeroGrid">
+          <article class="missionScoreCard">
+            <div class="missionCardLabel">ESTATE HEALTH INDEX</div>
+            <div class="ultraRing" id="ultraScoreRing" style="--p:0"><div><b id="ultraScore">--</b><small>/100</small></div></div>
+            <strong id="ultraScoreLabel">Calculating...</strong>
+            <span id="ultraScoreSub">Live source + limit + temperature score</span>
+          </article>
+
+          <article class="missionPowerCard">
+            <div class="missionCardLabel">LIVE POWER MATRIX</div>
+            <div class="missionPowerGrid">
+              <div class="solar"><span>SOLAR</span><b id="ultraSolar">--</b><small id="ultraSolarTrend">trend --</small></div>
+              <div class="load"><span>DEMAND</span><b id="ultraDemand">--</b><small id="ultraLoadTrend">trend --</small></div>
+              <div class="grid"><span>PHYSICAL GRID</span><b id="ultraGrid">--</b><small id="ultraGridSub">Tuya meter</small></div>
+              <div class="battery"><span>UPS BATTERY</span><b id="ultraBattery">--</b><small id="ultraBatterySub">Matrix</small></div>
+            </div>
+          </article>
+
+          <article class="missionEfficiencyCard">
+            <div class="missionCardLabel">ENERGY AUTOPILOT</div>
+            <div class="ultraMiniRingRow">
+              <div><div class="ultraMiniRing" id="ultraCoverageRing" style="--p:0"><b id="ultraCoverage">--</b></div><span>Solar coverage</span></div>
+              <div><div class="ultraMiniRing" id="ultraIndependenceRing" style="--p:0"><b id="ultraIndependence">--</b></div><span>Grid independence</span></div>
+              <div><div class="ultraMiniRing" id="ultraConfidenceRing" style="--p:0"><b id="ultraConfidence">--</b></div><span>Data confidence</span></div>
+            </div>
+            <div class="ultraGuardLine"><span>ACTIVE GUARD</span><b id="ultraGuard">--</b><small id="ultraGuardSub">5 kW night / 6 kW day</small></div>
+          </article>
+        </div>
+
+        <div class="missionMidGrid">
+          <article class="missionPanel pulsePanel">
+            <div class="missionPanelHead"><div><span>LIVE POWER PULSE</span><h3>Last telemetry window</h3></div><div class="pulseLegend"><i class="solar"></i>Solar <i class="load"></i>Demand <i class="grid"></i>Grid</div></div>
+            <canvas id="ultraPulseChart"></canvas>
+            <div class="pulseStats"><div><span>Solar delta</span><b id="ultraSolarDelta">--</b></div><div><span>Demand delta</span><b id="ultraDemandDelta">--</b></div><div><span>Grid delta</span><b id="ultraGridDelta">--</b></div><div><span>Samples</span><b id="ultraSamples">--</b></div></div>
+          </article>
+
+          <article class="missionPanel qualityPanel">
+            <div class="missionPanelHead"><div><span>POWER QUALITY</span><h3>Physical meter + AC reference</h3></div><b class="qualityGrade" id="ultraQualityGrade">--</b></div>
+            <div class="qualityGrid">
+              <div><span>Voltage</span><b id="ultraVoltage">--</b><small id="ultraVoltageState">--</small></div>
+              <div><span>Current</span><b id="ultraCurrent">--</b><small>Tuya phase A</small></div>
+              <div><span>Power factor</span><b id="ultraPf">--</b><small id="ultraPfState">--</small></div>
+              <div><span>Frequency</span><b id="ultraHz">--</b><small>Inverter AC reference</small></div>
+            </div>
+            <div class="qualityBar"><i id="ultraQualityBar"></i></div>
+            <p id="ultraQualityNote">Waiting for meter telemetry…</p>
+          </article>
+        </div>
+
+        <div class="missionLowerGrid">
+          <article class="missionPanel assetPanel">
+            <div class="missionPanelHead"><div><span>DIGITAL ASSET WALL</span><h3>Inverters & physical meter</h3></div><b id="ultraAssetsOnline">--</b></div>
+            <div id="ultraAssetGrid" class="ultraAssetGrid"><div class="ultraEmpty">Waiting for telemetry…</div></div>
+          </article>
+
+          <article class="missionPanel eventPanel">
+            <div class="missionPanelHead"><div><span>FLIGHT RECORDER</span><h3>Live event stream</h3></div><span class="eventLive">● LIVE</span></div>
+            <div id="ultraEventStream" class="ultraEventStream"><div class="ultraEmpty">Events will appear when site state changes.</div></div>
+          </article>
+
+          <article class="missionPanel opsPanel">
+            <div class="missionPanelHead"><div><span>OPERATOR INTELLIGENCE</span><h3>What matters now</h3></div><span id="ultraPriority" class="priorityBadge">NORMAL</span></div>
+            <div id="ultraOpsList" class="ultraOpsList"><div class="ultraEmpty">Building operator brief…</div></div>
+          </article>
+        </div>
+
+        <div class="missionKpiGrid">
+          <div><span>TODAY SOLAR</span><b id="ultraTodaySolar">--</b><small id="ultraTodayYield">-- kWh/kWp</small></div>
+          <div><span>TODAY IMPORT</span><b id="ultraTodayImport">--</b><small>physical / combined total</small></div>
+          <div><span>TODAY EXPORT</span><b id="ultraTodayExport">--</b><small>physical / combined total</small></div>
+          <div><span>PV UTILIZATION</span><b id="ultraPvUtil">--</b><small>live vs 11.14 kWp</small></div>
+          <div><span>UPS LOAD</span><b id="ultraUpsLoad">--</b><small id="ultraUpsMode">Matrix downstream</small></div>
+          <div><span>SYNC AGE</span><b id="ultraSyncAge">--</b><small>freshest master update</small></div>
+        </div>
+      </div>
+    </section>
+
     <section id="intelligence" class="view">
       <div class="pageShell intelligenceShell">
         <div class="pageTitle">
@@ -525,6 +628,6 @@
     </section>
   </main>
 
-  <script src="dashboard.js?v=31"></script>
+  <script src="dashboard.js?v=32"></script>
 </body>
 </html>

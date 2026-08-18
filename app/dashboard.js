@@ -21,6 +21,8 @@ let aiBusy = false;
 let aiHistory = [];
 let notifyStatusData = null;
 const localNotifySent = new Map();
+let ultraEvents = [];
+let ultraLastState = null;
 
 function set(id, value) { const el = $(id); if (el) el.textContent = value; }
 function uiIcon(name, cls='') { return `<svg class="uiIcon ${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`; }
@@ -82,6 +84,9 @@ $$('.navtab').forEach((button)=>button.addEventListener('click',()=>{
 }));
 const requestedView=new URLSearchParams(location.search).get('view');
 if(requestedView&&$(requestedView)){const btn=$(`.navtab[data-view="${requestedView.replace(/[^a-z0-9_-]/gi,'')}"]`);if(btn)btn.click();}
+$('ultraRibbonOpen')?.addEventListener('click',()=>{$('.navtab[data-view="mission"]')?.click();window.scrollTo({top:0,behavior:'smooth'});});
+$('ultraFullscreen')?.addEventListener('click',async()=>{try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen();}catch(_error){}});
+
 $$('.rangeButtons button').forEach((button)=>button.addEventListener('click',()=>{
   $$('.rangeButtons button').forEach((b)=>b.classList.toggle('active',b===button));
   activeHours=Number(button.dataset.hours)||24;
@@ -379,6 +384,7 @@ function render(){
   renderIntelligenceCenter();
   renderCommandView();
   renderAiLiveContext();
+  renderUltraDeck(a,b,u,c,m);
   drawAll();
 }
 function setState(id,online){set(id,online?'ONLINE':'OFFLINE');$(id)?.classList.toggle('online',Boolean(online));}
@@ -760,6 +766,67 @@ function mergeHistory(){
   }
   return [...map.values()].sort((x,y)=>x.timestamp-y.timestamp).slice(-1200);
 }
+
+
+/* =========================================================
+   V32 ULTRA PRO MAX - Mission Control intelligence
+   ========================================================= */
+function ultraRing(id,value){const el=$(id);if(el)el.style.setProperty('--p',String(clamp(value,0,100)));}
+function ultraTrend(values,key){if(!Array.isArray(values)||values.length<2)return null;const usable=values.filter(x=>Number.isFinite(Number(x?.[key])));if(usable.length<2)return null;const recent=usable.slice(-12);return finite(recent.at(-1)?.[key])-finite(recent[0]?.[key]);}
+function ultraTrendText(v){if(v==null)return'trend --';const a=Math.abs(v);if(a<40)return'→ steady';return `${v>0?'↗':'↘'} ${fmtPower(a)} vs recent`;}
+function ultraFresh(ts,maxSec=180){if(!ts)return false;return(Date.now()-finite(ts,0))<=maxSec*1000;}
+function addUltraEvent(title,detail='',level='good'){
+  const last=ultraEvents[0]; if(last&&last.title===title&&last.detail===detail&&(Date.now()-last.ts)<15000)return;
+  ultraEvents.unshift({title,detail,level,ts:Date.now()}); ultraEvents=ultraEvents.slice(0,18); renderUltraEvents();
+}
+function renderUltraEvents(){const box=$('ultraEventStream');if(!box)return;if(!ultraEvents.length){box.innerHTML='<div class="ultraEmpty">Events will appear when site state changes.</div>';return;}box.innerHTML=ultraEvents.map(e=>`<div class="ultraEvent ${escapeHtml(e.level)}"><b>${escapeHtml(e.title)}</b><span>${escapeHtml(fmtTimePk(e.ts))} PKT • ${escapeHtml(e.detail)}</span></div>`).join('');}
+function detectUltraEvents(a,b,u,c,m,guardMode,guardPct){
+  const state={a:Boolean(a),b:Boolean(b),u:Boolean(u),m:Boolean(m?.online),grid:m?.online?String(m.mode||'IDLE').toUpperCase():gridMode(c?.gridW),bat:u?batteryFlowMode(u.batteryW,u.batteryMode):'OFFLINE',guard:statusFromPct(guardPct)};
+  if(!ultraLastState){ultraLastState=state;addUltraEvent('Mission Control linked','Live estate telemetry attached','good');return;}
+  for(const [k,label] of [['a','PV14000'],['b','PV9000'],['u','Matrix UPS'],['m','Tuya Meter']]) if(state[k]!==ultraLastState[k]) addUltraEvent(`${label} ${state[k]?'ONLINE':'OFFLINE'}`,state[k]?'Telemetry restored':'Telemetry feed unavailable',state[k]?'good':'danger');
+  if(state.grid!==ultraLastState.grid)addUltraEvent(`Grid ${state.grid}`,m?.online?`${fmtPower(Math.max(finite(m.importW),finite(m.exportW)))} on physical meter`:'Using inverter estimate',state.grid==='IMPORTING'?'warn':'good');
+  if(state.bat!==ultraLastState.bat)addUltraEvent(`Battery ${state.bat}`,u?`${fmtPct(u.batteryPct)} • ${fmtSignedPower(u.batteryW)}`:'Matrix unavailable',state.bat==='DISCHARGING'?'warn':'good');
+  if(state.guard!==ultraLastState.guard)addUltraEvent(`${guardMode} guard ${state.guard}`,`${Math.round(guardPct)}% of active limit`,guardPct>=100?'danger':guardPct>=80?'warn':'good');
+  ultraLastState=state;
+}
+function ultraQualityScore(m,a,b){
+  let score=100,notes=[];const v=m?.voltage;const pf=m?.powerFactor;const hz=finite(a?.gridHz||b?.gridHz,0);
+  if(Number.isFinite(Number(v))){const d=Math.abs(finite(v)-230);if(d>20){score-=30;notes.push('voltage outside preferred band');}else if(d>10){score-=12;notes.push('voltage slightly off nominal');}}else{score-=25;notes.push('meter voltage unavailable');}
+  if(Number.isFinite(Number(pf))){if(finite(pf)<.8){score-=25;notes.push('low power factor');}else if(finite(pf)<.9){score-=10;notes.push('power factor watch');}}else score-=10;
+  if(hz){const d=Math.abs(hz-50);if(d>.8){score-=25;notes.push('frequency deviation');}else if(d>.3){score-=8;notes.push('frequency slightly off');}}else score-=8;
+  return{score:clamp(score),notes};
+}
+function renderUltraDeck(a,b,u,c,m){
+  const solar=finite(c?.solarW), demand=finite(c?.siteDemandW);const importW=m?.online?finite(m.importW):Math.max(0,finite(c?.gridW));const exportW=m?.online?finite(m.exportW):Math.max(0,-finite(c?.gridW));
+  const dayMode=analytics?.mode?.dayMode??false;const guardMode=dayMode?'DAY EXPORT':'NIGHT IMPORT';const guardW=dayMode?exportW:importW;const guardLimit=dayMode?6000:5000;const guardPct=guardW/guardLimit*100;
+  const sources=[[a,a?.updatedAt],[b,b?.updatedAt],[u,u?.updatedAt],[m?.online?m:null,m?.updatedAt]];const fresh=sources.filter(([x,ts])=>Boolean(x)&&ultraFresh(ts)).length;const confidence=fresh/4*100;
+  const coverage=demand>20?solar/demand*100:(solar>20?100:0);const independence=demand>20?100-(importW/demand*100):100;
+  const temps=[finite(a?.temp,-999),finite(b?.temp,-999),finite(u?.transformer||u?.temp,-999),finite(m?.temperatureC,-999)].filter(x=>x>-100);const hottest=temps.length?Math.max(...temps):0;
+  let score=100;score-=(4-fresh)*12;if(guardPct>=100)score-=18;else if(guardPct>=90)score-=8;else if(guardPct>=80)score-=4;if(hottest>=70)score-=12;else if(hottest>=60)score-=5;if(u?.batteryPct!=null&&finite(u.batteryPct)<20)score-=8;score=clamp(score);
+  const scoreLevel=score>=90?'ELITE':score>=75?'GOOD':score>=55?'WATCH':'ATTENTION';
+  set('ultraScore',Math.round(score));set('ultraScoreLabel',scoreLevel);set('ultraScoreSub',`${fresh}/4 fresh sources • hottest ${hottest?Math.round(hottest)+'°C':'--'}`);ultraRing('ultraScoreRing',score);
+  set('ribbonScore',`${Math.round(score)}/100`);set('ribbonCoverage',`${Math.round(clamp(coverage))}%`);set('ribbonIndependence',`${Math.round(clamp(independence))}%`);set('ribbonConfidence',`${Math.round(confidence)}%`);
+  set('ultraSolar',fmtPower(solar));set('ultraDemand',fmtPower(demand));set('ultraGrid',m?.online?fmtGridSigned(meterSignedW(m)):fmtGridSigned(c?.gridW));set('ultraGridSub',m?.online?`${finite(m.voltage).toFixed(1)} V • Tuya physical`:'Inverter estimate');
+  set('ultraBattery',u?fmtPct(u.batteryPct):'--');set('ultraBatterySub',u?`${batteryFlowMode(u.batteryW,u.batteryMode)} • ${fmtSignedPower(u.batteryW)}`:'Matrix offline');
+  set('ultraCoverage',`${Math.round(clamp(coverage))}%`);set('ultraIndependence',`${Math.round(clamp(independence))}%`);set('ultraConfidence',`${Math.round(confidence)}%`);ultraRing('ultraCoverageRing',coverage);ultraRing('ultraIndependenceRing',independence);ultraRing('ultraConfidenceRing',confidence);
+  set('ultraGuard',`${guardMode} • ${Math.round(guardPct)}%`);set('ultraGuardSub',`${fmtPower(guardW)} / ${fmtPower(guardLimit)} • ${fmtPower(Math.max(0,guardLimit-guardW))} headroom`);
+  const mission=$('ultraMissionState');if(mission){mission.classList.remove('good','warn','danger');const lev=score<55||guardPct>=100?'danger':score<75||guardPct>=80?'warn':'good';mission.classList.add(lev);mission.textContent=lev==='danger'?'ACTION REQUIRED':lev==='warn'?'WATCH ACTIVE':'SYSTEM NOMINAL';}
+  const hist=mergeHistory();const solarD=ultraTrend(hist,'solarW'),loadD=ultraTrend(hist,'loadW'),gridD=ultraTrend(hist,'gridW');set('ultraSolarTrend',ultraTrendText(solarD));set('ultraLoadTrend',ultraTrendText(loadD));set('ultraSolarDelta',solarD==null?'--':`${solarD>=0?'+':'−'}${fmtPower(Math.abs(solarD))}`);set('ultraDemandDelta',loadD==null?'--':`${loadD>=0?'+':'−'}${fmtPower(Math.abs(loadD))}`);set('ultraGridDelta',gridD==null?'--':`${gridD>=0?'+':'−'}${fmtPower(Math.abs(gridD))}`);set('ultraSamples',String(hist.length));
+  const q=ultraQualityScore(m,a,b);const hz=finite(a?.gridHz||b?.gridHz,0);set('ultraQualityGrade',q.score>=92?'A+':q.score>=84?'A':q.score>=72?'B':'C');set('ultraVoltage',m?.voltage!=null?`${finite(m.voltage).toFixed(1)} V`:'--');set('ultraVoltageState',m?.voltage!=null?(Math.abs(finite(m.voltage)-230)<=10?'Near nominal':'Check voltage'):'Unavailable');set('ultraCurrent',m?.currentA!=null?`${finite(m.currentA).toFixed(2)} A`:'--');set('ultraPf',m?.powerFactor!=null?finite(m.powerFactor).toFixed(3):'--');set('ultraPfState',m?.powerFactor!=null?(finite(m.powerFactor)>=.9?'Healthy':'Watch PF'):'Unavailable');set('ultraHz',hz?`${hz.toFixed(2)} Hz`:'--');set('ultraQualityNote',q.notes.length?q.notes.join(' • '):'Voltage, frequency and power factor look healthy.');const qb=$('ultraQualityBar');if(qb)qb.style.width=`${q.score}%`;
+  const assets=[
+    {icon:'☀',name:'FRONUS META 10KW',sub:'PV14000',on:Boolean(a),m:[['Solar',a?fmtPower(a.solarW):'--'],['Load',a?fmtPower(a.loadW):'--'],['Temp',a?`${Math.round(finite(a.temp))}°C`:'--']]},
+    {icon:'☀',name:'FRONUS META 6KW',sub:'PV9000',on:Boolean(b),m:[['Solar',b?fmtPower(b.solarW):'--'],['Smart',b?fmtPower(b.smartLoadW):'--'],['Temp',b?`${Math.round(finite(b.temp))}°C`:'--']]},
+    {icon:'⚡',name:'FRONUS MATRIX 6KW',sub:'UPS / BACKUP',on:Boolean(u),m:[['UPS load',u?fmtPower(u.loadW):'--'],['Battery',u?fmtPct(u.batteryPct):'--'],['Temp',u?`${Math.round(finite(u.transformer||u.temp))}°C`:'--']]},
+    {icon:'↕',name:'TUYA PHYSICAL METER',sub:'GRID REFERENCE',on:Boolean(m?.online),m:[['Grid',m?.online?fmtGridSigned(meterSignedW(m)):'--'],['Voltage',m?.online?`${finite(m.voltage).toFixed(1)}V`:'--'],['PF',m?.online&&m.powerFactor!=null?finite(m.powerFactor).toFixed(3):'--']]}
+  ];
+  const ag=$('ultraAssetGrid');if(ag)ag.innerHTML=assets.map(x=>`<div class="ultraAsset"><div class="ultraAssetIcon">${x.icon}</div><div class="ultraAssetName"><b>${escapeHtml(x.name)}</b><span>${escapeHtml(x.sub)}</span></div><div class="ultraAssetState ${x.on?'':'off'}">${x.on?'ONLINE':'OFFLINE'}</div><div class="ultraAssetMetrics">${x.m.map(([k,v])=>`<div><span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b></div>`).join('')}</div></div>`).join('');set('ultraAssetsOnline',`${assets.filter(x=>x.on).length}/4 ONLINE`);
+  const ops=[];let priority='NORMAL',priorityClass='';if(!b){ops.push(['📡','Restore PV9000 telemetry','PV9000 is not currently contributing to the master data picture. Check its API / Wi-Fi path.']);priority='WATCH';priorityClass='warn';}if(guardPct>=80){ops.push(['🎯',`${guardMode} guard is ${Math.round(guardPct)}%`,`Only ${fmtPower(Math.max(0,guardLimit-guardW))} headroom remains before the configured watch limit.`]);priority=guardPct>=100?'CRITICAL':'WATCH';priorityClass=guardPct>=100?'danger':'warn';}if(q.score<80)ops.push(['〽','Power quality needs attention',q.notes.join(' • ')||'Review voltage / PF / frequency.']);if(u&&finite(u.batteryPct)<30)ops.push(['🔋','UPS battery reserve is low',`${fmtPct(u.batteryPct)} SOC with ${fmtPower(u.loadW)} downstream load.`]);if(confidence<75)ops.push(['🛰','Data confidence reduced',`${fresh}/4 sources are fresh inside the 180 second supervision window.`]);if(!ops.length)ops.push(['✅','No urgent operator action','Grid guardrails, telemetry freshness and power quality are inside the normal watch zone.']);const ol=$('ultraOpsList');if(ol)ol.innerHTML=ops.slice(0,5).map(([ic,t,d])=>`<div class="ultraOp"><i>${ic}</i><div><b>${escapeHtml(t)}</b><span>${escapeHtml(d)}</span></div></div>`).join('');set('ultraPriority',priority);const pb=$('ultraPriority');if(pb){pb.classList.remove('warn','danger');if(priorityClass)pb.classList.add(priorityClass);}
+  const tSolar=finite(todayEnergy?.combined?.solarKwh,finite(c?.todaySolar));const tImport=finite(todayEnergy?.combined?.importKwh,finite(c?.todayImport));const tExport=finite(todayEnergy?.combined?.exportKwh,finite(c?.todayExport));set('ultraTodaySolar',fmtKwh(tSolar));set('ultraTodayYield',`${(tSolar/11.14).toFixed(2)} kWh/kWp`);set('ultraTodayImport',fmtKwh(tImport));set('ultraTodayExport',fmtKwh(tExport));set('ultraPvUtil',`${Math.round(clamp(solar/11140*100))}%`);set('ultraUpsLoad',u?fmtPower(u.loadW):'--');set('ultraUpsMode',u?`${batteryFlowMode(u.batteryW,u.batteryMode)} • ${fmtPct(u.batteryPct)}`:'Matrix offline');const ages=[a?.updatedAt,b?.updatedAt,u?.updatedAt,m?.updatedAt].filter(Boolean).map(ts=>Date.now()-finite(ts));set('ultraSyncAge',ages.length?`${Math.round(Math.min(...ages)/1000)}s`:'--');
+  detectUltraEvents(a,b,u,c,m,guardMode,guardPct);drawUltraPulse();
+}
+function drawUltraPulse(){
+  const canvas=$('ultraPulseChart');if(!canvas)return;const all=mergeHistory().slice(-180);const {ctx,w,h}=canvasSize(canvas);ctx.clearRect(0,0,w,h);const pad={l:6,r:6,t:10,b:12};ctx.strokeStyle='rgba(120,190,215,.10)';ctx.lineWidth=1;for(let i=0;i<4;i++){const yy=pad.t+i*(h-pad.t-pad.b)/3;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();}if(!all.length){ctx.fillStyle='#6f9eb3';ctx.font='11px Segoe UI';ctx.fillText('Collecting live history…',18,h/2);return;}const max=Math.max(1000,...all.flatMap(p=>[finite(p.solarW),finite(p.loadW),Math.abs(finite(p.gridW))]))*1.12;const x=i=>pad.l+(all.length<=1?0:i/(all.length-1))*(w-pad.l-pad.r);const y=v=>pad.t+(max-Math.abs(finite(v)))/max*(h-pad.t-pad.b);const series=[[COLORS.solar,'solarW'],[COLORS.load,'loadW'],['#3ce09b','gridW']];for(const [color,key] of series){ctx.beginPath();all.forEach((p,i)=>{const xx=x(i),yy=y(p[key]);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.strokeStyle=color;ctx.lineWidth=2;ctx.shadowColor=color;ctx.shadowBlur=6;ctx.stroke();ctx.shadowBlur=0;}}
+
 function canvasSize(canvas){const r=canvas.getBoundingClientRect();const dpr=window.devicePixelRatio||1;canvas.width=Math.max(1,Math.round(r.width*dpr));canvas.height=Math.max(1,Math.round(r.height*dpr));const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,w:r.width,h:r.height};}
 function drawLineChart(id,series,{signed=false}={}){
   const canvas=$(id);if(!canvas)return;const{ctx,w,h}=canvasSize(canvas);ctx.clearRect(0,0,w,h);const pad={l:42,r:16,t:17,b:27};const values=series.flatMap(s=>s.data.map(p=>finite(p.v)));if(!values.length){ctx.fillStyle='#7893a5';ctx.font='12px Segoe UI';ctx.fillText('History will appear as samples are collected.',pad.l,h/2);return;}
@@ -791,6 +858,7 @@ function drawAll(){
   drawLineChart('pv9000PvChart',[{color:COLORS.solar,data:b.map(p=>({v:p.pv1W}))},{color:COLORS.pv9000,data:b.map(p=>({v:p.pv2W}))}]);
   drawEnergyBars();
   drawDailyTimeline();
+  drawUltraPulse();
 }
 
 async function start(){
@@ -799,7 +867,7 @@ async function start(){
   await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadAnalytics(),loadTimelineHistory(),loadWeather(),loadTuyaQuickTotals(),loadAiStatus(),loadNotificationStatus()]);
   if(!todayEnergy)todayEnergy=energy?.period==='T'?energy:null;
   await loadSelectedTuyaEnergy();
-  renderIntelligenceCenter(); renderCommandView(); renderAiLiveContext(); drawDailyTimeline();
+  renderIntelligenceCenter(); renderCommandView(); renderAiLiveContext(); drawDailyTimeline(); drawUltraPulse();
   setInterval(loadLive,10000);
   setInterval(()=>loadHistory(activeHours),60000);
   setInterval(()=>loadEnergy(activeEnergyPeriod),60000);
@@ -810,5 +878,5 @@ async function start(){
   setInterval(loadWeather,600000);
 }
 setInterval(()=>{loadNotificationStatus().catch(()=>{});},60000);
-window.addEventListener('resize',()=>requestAnimationFrame(()=>{drawAll();drawDailyTimeline();}));
+window.addEventListener('resize',()=>requestAnimationFrame(()=>{drawAll();drawDailyTimeline();drawUltraPulse();}));
 start();

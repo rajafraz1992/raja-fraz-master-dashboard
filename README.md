@@ -1,3 +1,26 @@
+# Raja Fraz Master Solar Dashboard - V32 ULTRA PRO MAX
+
+V32 keeps the complete V31 AI + notification center and adds a premium **ULTRA Mission Control** layer without changing any inverter, Tuya breaker, Smart Life protection or electrical control setting.
+
+## V32 highlights
+- New **ULTRA** top-navigation tab with a dark NOC / control-room presentation.
+- Dashboard-wide **Mission Control ribbon** with estate score, solar coverage, grid independence and data-confidence KPIs.
+- **Estate Health Index (0-100)** based on source freshness, active grid guard, battery reserve and temperature.
+- **Live Power Matrix** for solar, demand, physical grid and UPS battery.
+- **Energy Autopilot rings** for instantaneous solar coverage, grid independence and source confidence.
+- **Power Pulse chart** using existing PostgreSQL/live history, with live solar/load/grid trend deltas.
+- **Power Quality panel** using Tuya voltage/current/PF plus inverter AC frequency reference.
+- **Digital Asset Wall** for PV14000, PV9000, Matrix UPS and Tuya meter.
+- **Flight Recorder** that logs live state changes such as source online/offline, grid direction, battery mode and guard-zone transitions.
+- **Operator Intelligence** that turns current telemetry into prioritized actions without using AI credits.
+- **Daily Mission KPIs** for solar, import/export, kWh/kWp yield, PV utilization, UPS load and synchronization age.
+- Full-screen Mission Control button for inverter-room / NOC displays.
+- Existing V31 Gemini AI, browser/Telegram/Twilio notification framework, V28 energy-flow animation, V27 display mode and all historical/financial/intelligence features are preserved.
+
+No new required environment variables are needed for V32.
+
+---
+
 # Raja Fraz Master Dashboard V31 - AI CONTROL-ROOM UI + SMART PUSH ALERTS
 
 V31 keeps every V30/V28 feature and adds two major upgrades: **rich AI briefing cards** instead of raw/boring Markdown, plus a **multi-channel notification center** for browser/Web Push, Telegram, WhatsApp and SMS. All alerts remain monitoring-only; no notification path can switch Tuya or write inverter settings.
