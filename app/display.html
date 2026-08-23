@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#06131f">
   <meta name="color-scheme" content="dark">
   <title>Raja Fraz Inverter Room Display</title>
-  <link rel="stylesheet" href="display.css?v=28">
+  <link rel="stylesheet" href="display.css?v=37">
 </head>
 <body>
   <div class="roomDisplay" id="roomDisplay">
@@ -16,7 +16,7 @@
         <div>
           <span class="kicker">INVERTER ROOM • LIVE COMMAND DISPLAY</span>
           <h1>Raja Fraz Solar Estate</h1>
-          <small>PV14000 • PV9000 • Matrix UPS • Tuya Physical Grid Meter</small>
+          <small>PV9000 live • 1 string / 8×545 W • PV14000 logger pending • Matrix UPS • Tuya meter</small>
         </div>
       </div>
       <div class="headerRight">
@@ -31,7 +31,7 @@
       <section class="heroMetrics" aria-label="Live master power">
         <article class="heroCard solarHero">
           <div class="heroIcon">☀</div>
-          <div><span>TOTAL SOLAR</span><b id="roomSolar">--</b><small id="roomSolarSub">11.14 kWp installed</small></div>
+          <div><span>MONITORED SOLAR</span><b id="roomSolar">--</b><small id="roomSolarSub">4.36 kWp live • 11.14 kWp installed</small></div>
           <div class="heroBar"><i id="roomSolarBar"></i></div>
         </article>
         <article class="heroCard demandHero">
@@ -69,10 +69,10 @@
             </svg>
 
             <div class="flowNode pv14000Node" id="nodePv14000">
-              <span>PV14000</span><b id="flowPv14000">--</b><small>Meta 10KW • 6.78 kWp</small><em id="flowPv14000State">--</em>
+              <span>PV14000</span><b id="flowPv14000">LOGGER PENDING</b><small>Meta 10KW • 6.78 kWp physical</small><em id="flowPv14000State">UNMONITORED</em>
             </div>
             <div class="flowNode pv9000Node" id="nodePv9000">
-              <span>PV9000</span><b id="flowPv9000">--</b><small>Meta 6KW • 4.36 kWp</small><em id="flowPv9000State">--</em>
+              <span>PV9000</span><b id="flowPv9000">--</b><small>Meta 6KW • 1 string • 8×545 W</small><em id="flowPv9000State">--</em>
             </div>
             <div class="flowNode gridNode" id="nodeGrid">
               <span>TUYA / GRID</span><b id="flowGrid">--</b><small id="flowGridDetail">Physical meter</small><em id="flowGridState">--</em>
@@ -101,18 +101,18 @@
         </article>
 
         <aside class="systemsPanel">
-          <div class="panelTitle compactTitle"><div><span>SYSTEM HEALTH</span><h2>Inverters & meter</h2></div><b id="roomSystemsCount">--/4</b></div>
+          <div class="panelTitle compactTitle"><div><span>MONITORED HEALTH</span><h2>Live sources + planned gap</h2></div><b id="roomSystemsCount">--/3</b></div>
 
           <article class="systemTile" id="tilePv14000">
             <div class="systemStripe solarStripe"></div>
-            <div class="systemName"><span>FRONUS META 10KW</span><b>PV14000</b><small id="pv14000FreshRoom">Waiting for data</small></div>
-            <div class="systemReading"><span>Solar</span><b id="pv14000SolarRoom">--</b><small id="pv14000LoadRoom">Load --</small></div>
-            <em class="systemState" id="pv14000StateRoom">CHECK</em>
+            <div class="systemName"><span>FRONUS META 10KW</span><b>PV14000</b><small id="pv14000FreshRoom">WiFi moved to PV9000</small></div>
+            <div class="systemReading"><span>Physical PV</span><b id="pv14000SolarRoom">UNMONITORED</b><small id="pv14000LoadRoom">6.78 kWp installed</small></div>
+            <em class="systemState" id="pv14000StateRoom">LOGGER PENDING</em>
           </article>
 
           <article class="systemTile" id="tilePv9000">
             <div class="systemStripe solarStripe"></div>
-            <div class="systemName"><span>FRONUS META 6KW</span><b>PV9000</b><small id="pv9000FreshRoom">Waiting for data</small></div>
+            <div class="systemName"><span>FRONUS META 6KW • 1 STRING</span><b>PV9000</b><small id="pv9000FreshRoom">8 × 545 W • waiting for data</small></div>
             <div class="systemReading"><span>Solar</span><b id="pv9000SolarRoom">--</b><small id="pv9000LoadRoom">Load --</small></div>
             <em class="systemState" id="pv9000StateRoom">CHECK</em>
           </article>
@@ -139,7 +139,7 @@
       </section>
 
       <section class="bottomStrip">
-        <div class="dayStat"><span>TODAY SOLAR</span><b id="roomTodaySolar">--</b><small>PV14000 + PV9000</small></div>
+        <div class="dayStat"><span>TODAY MONITORED SOLAR</span><b id="roomTodaySolar">--</b><small>PV9000 only</small></div>
         <div class="dayStat"><span>GRID IMPORT</span><b id="roomTodayImport">--</b><small>Today</small></div>
         <div class="dayStat"><span>GRID EXPORT</span><b id="roomTodayExport">--</b><small>Today</small></div>
         <div class="dayStat"><span>SMART LOAD</span><b id="roomSmartLoad">--</b><small>Live PV9000 branch</small></div>
@@ -154,6 +154,6 @@
       <span>Auto refresh 10s • <a href="/" tabindex="-1">Open full dashboard</a></span>
     </footer>
   </div>
-  <script src="display.js?v=28"></script>
+  <script src="display.js?v=37"></script>
 </body>
 </html>

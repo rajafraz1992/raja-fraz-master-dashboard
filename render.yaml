@@ -12,13 +12,17 @@ services:
     buildCommand: npm install
     startCommand: npm start
     envVars:
-      - key: PV14000_API_BASE
+      - key: PV9000_API_BASE
         value: https://inverterzone-dashboard.onrender.com
       - key: META_DASHBOARD_USER
         value: admin
       - key: META_DASHBOARD_PASSWORD
         sync: false
-      - key: PV9000_API_BASE
+      - key: PV14000_NEW_API_BASE
+        sync: false
+      - key: PV14000_NEW_DASHBOARD_USER
+        value: admin
+      - key: PV14000_NEW_DASHBOARD_PASSWORD
         sync: false
       - key: PV9000_DASHBOARD_USER
         value: admin

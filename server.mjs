@@ -12,25 +12,32 @@ const __dirname = dirname(__filename);
 const APP_DIR = join(__dirname, "app");
 const PORT = Number(process.env.PORT || 10000);
 
-// SYSTEM 01 - new primary solar inverter. Legacy META_* variables are supported
-// so the existing Render service can be upgraded without breaking authentication.
-const PV14000_API_BASE = String(
+// V37 LOGGER REASSIGNMENT
+// The Wi-Fi logger that was previously named PV14000 is now physically fitted
+// to PV9000. Existing Render variables keep working: PV14000_API_BASE / META_API_BASE
+// are treated as the reassigned PV9000 logger until a dedicated PV9000 URL is set.
+const LEGACY_WIFI_API_BASE = String(
   process.env.PV14000_API_BASE ||
   process.env.META_API_BASE ||
   "https://inverterzone-dashboard.onrender.com"
 ).replace(/\/$/, "");
-const PV14000_USER = String(
+const LEGACY_WIFI_USER = String(
   process.env.PV14000_DASHBOARD_USER || process.env.META_DASHBOARD_USER || "admin"
 ).trim() || "admin";
-const PV14000_PASSWORD = String(
+const LEGACY_WIFI_PASSWORD = String(
   process.env.PV14000_DASHBOARD_PASSWORD || process.env.META_DASHBOARD_PASSWORD || ""
 );
 
-// SYSTEM 02 - Fronus Meta 6kW PV9000. This is a third upstream data source,
-// so its URL must be supplied in Render as PV9000_API_BASE.
-const PV9000_API_BASE = String(process.env.PV9000_API_BASE || "").replace(/\/$/, "");
-const PV9000_USER = String(process.env.PV9000_DASHBOARD_USER || PV14000_USER || "admin").trim() || "admin";
-const PV9000_PASSWORD = String(process.env.PV9000_DASHBOARD_PASSWORD || PV14000_PASSWORD || "");
+// SYSTEM 01 - PV14000 remains physically installed, but its live telemetry is
+// intentionally disabled until a new logger is ordered and configured here.
+const PV14000_API_BASE = String(process.env.PV14000_NEW_API_BASE || "").replace(/\/$/, "");
+const PV14000_USER = String(process.env.PV14000_NEW_DASHBOARD_USER || LEGACY_WIFI_USER).trim() || "admin";
+const PV14000_PASSWORD = String(process.env.PV14000_NEW_DASHBOARD_PASSWORD || LEGACY_WIFI_PASSWORD);
+
+// SYSTEM 02 - PV9000 now owns the reassigned Wi-Fi logger.
+const PV9000_API_BASE = String(process.env.PV9000_API_BASE || LEGACY_WIFI_API_BASE).replace(/\/$/, "");
+const PV9000_USER = String(process.env.PV9000_DASHBOARD_USER || LEGACY_WIFI_USER).trim() || "admin";
+const PV9000_PASSWORD = String(process.env.PV9000_DASHBOARD_PASSWORD || LEGACY_WIFI_PASSWORD);
 
 // SYSTEM 03 - Fronus Matrix 6kW, now used as a PV-less UPS.
 const MATRIX_API_BASE = String(
@@ -120,7 +127,9 @@ const PV9000_PV_INSTALLED_W = 4360;
 const PV9000_AC_CAPACITY_W = 6000;
 const MATRIX_AC_CAPACITY_W = 6000;
 const TOTAL_PV_INSTALLED_W = PV14000_PV_INSTALLED_W + PV9000_PV_INSTALLED_W;
+const CURRENT_MONITORED_PV_W = PV9000_PV_INSTALLED_W + (PV14000_API_BASE ? PV14000_PV_INSTALLED_W : 0);
 const SITE_UPSTREAM_AC_CAPACITY_W = PV14000_AC_CAPACITY_W + PV9000_AC_CAPACITY_W;
+const EXPECTED_MONITORED_SYSTEMS = PV14000_API_BASE ? 3 : 2;
 
 const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 4 }) : null;
 let dbReady = false;
@@ -371,13 +380,30 @@ function normalizePv14000(payload) {
   });
 }
 function normalizePv9000(payload) {
-  return normalizeSolarInverter(payload, {
+  const normalized = normalizeSolarInverter(payload, {
     key: "pv9000",
     name: "FRONUS META 6KW - PV9000",
     model: "PV9000",
     pvInstalledW: PV9000_PV_INSTALLED_W,
     acCapacityW: PV9000_AC_CAPACITY_W
   });
+  // Only one PV string is connected (8 × 545 W = 4,360 W). Whichever MPPT
+  // input the logger reports is normalized into String 1; String 2 is disabled.
+  const useSecondInput = num(normalized.pv1W) <= 0 && num(normalized.pv2W) > 0;
+  const activeStringW = num(normalized.pv1W) + num(normalized.pv2W) || num(normalized.solarW);
+  return {
+    ...normalized,
+    solarW: num(normalized.solarW) || activeStringW,
+    pv1W: activeStringW,
+    pv2W: 0,
+    pv1V: useSecondInput ? num(normalized.pv2V) : num(normalized.pv1V),
+    pv2V: 0,
+    pv1A: useSecondInput ? num(normalized.pv2A) : num(normalized.pv1A),
+    pv2A: 0,
+    activeStrings: 1,
+    stringLayout: "1 × 8 panels × 545 W = 4.36 kWp",
+    loggerSource: "reassigned-from-pv14000"
+  };
 }
 function normalizeMatrixUps(payload) {
   const s = unwrap(payload);
@@ -647,11 +673,13 @@ function combine(pv14000, pv9000, matrix) {
   return {
     key: "combined",
     name: "Raja Fraz Solar Estate",
-    online: systemsPresent === 3,
+    online: systemsPresent === EXPECTED_MONITORED_SYSTEMS,
     connectedSystems: systemsPresent,
-    totalSystems: 3,
+    totalSystems: EXPECTED_MONITORED_SYSTEMS,
+    physicalSystems: 3,
     solarW: solarSum("solarW"),
     pvInstalledW: TOTAL_PV_INSTALLED_W,
+    monitoredPvInstalledW: CURRENT_MONITORED_PV_W,
     siteUpstreamAcCapacityW: SITE_UPSTREAM_AC_CAPACITY_W,
     siteDemandW,
     utilityGridW,
@@ -666,13 +694,15 @@ function combine(pv14000, pv9000, matrix) {
     todayLoad: num(pv14000?.todayLoad) + num(pv9000?.todayLoad) + (!PV9000_LOAD_INCLUDES_SMART ? num(pv9000?.todaySmartLoad) : 0) + (!PV9000_LOAD_INCLUDES_UPS ? num(matrix?.todayLoad) : 0),
     todayImport: num(pv14000?.todayImport) + num(pv9000?.todayImport),
     todayExport: num(pv14000?.todayExport) + num(pv9000?.todayExport),
-    health: systemsPresent === 3 ? "Excellent" : "Partial",
+    health: systemsPresent === EXPECTED_MONITORED_SYSTEMS ? "Excellent" : "Partial",
     topology: {
       pv9000FeedsMatrix: true,
       matrixIsUps: true,
       matrixPvInstalledW: 0,
       smartLoadSource: "pv9000",
-      utilityGridSources: ["pv14000", "pv9000"],
+      utilityGridSources: pv14000 ? ["pv14000", "pv9000"] : ["pv9000"],
+      pv14000Telemetry: pv14000 ? "online" : "logger-pending",
+      pv9000Strings: 1,
       matrixExcludedFromUtilityGrid: true,
       matrixExcludedFromSiteDemand: PV9000_LOAD_INCLUDES_UPS,
       pv9000LoadIncludesSmart: PV9000_LOAD_INCLUDES_SMART
@@ -698,7 +728,7 @@ function normalizeEnergy(payload, period = "T") {
 async function fetchEnergy(period = "T") {
   const safePeriod = ["T", "Y", "TM", "LM"].includes(period) ? period : "T";
   const tasks = [
-    getPv14000Json(`/api/energy?period=${encodeURIComponent(safePeriod)}`).then((p) => normalizeEnergy(p, safePeriod)),
+    PV14000_API_BASE ? getPv14000Json(`/api/energy?period=${encodeURIComponent(safePeriod)}`).then((p) => normalizeEnergy(p, safePeriod)) : Promise.resolve(null),
     getPv9000Json(`/api/energy?period=${encodeURIComponent(safePeriod)}`).then((p) => normalizeEnergy(p, safePeriod)),
     getJson(`${MATRIX_API_BASE}/api/energy?period=${encodeURIComponent(safePeriod)}`).then((p) => normalizeEnergy(p, safePeriod))
   ];
@@ -726,7 +756,7 @@ async function fetchEnergy(period = "T") {
 
   return {
     ok: Boolean(pv14000 || pv9000 || matrix),
-    complete: Boolean(pv14000 && pv9000 && matrix),
+    complete: Boolean(pv9000 && matrix && (!PV14000_API_BASE || pv14000)),
     period: safePeriod,
     pv14000,
     pv9000,
@@ -736,7 +766,9 @@ async function fetchEnergy(period = "T") {
     topology: {
       matrixEnergyExcludedFromSiteTotals: PV9000_LOAD_INCLUDES_UPS,
       matrixGridExcludedFromSiteTotals: true,
-      smartLoadBelongsTo: "pv9000"
+      smartLoadBelongsTo: "pv9000",
+      pv14000Telemetry: pv14000 ? "online" : "logger-pending",
+      pv9000Strings: 1
     },
     errors: {
       ...(aResult.status === "rejected" ? { pv14000: sourceHint("PV14000", aResult.reason) } : {}),
@@ -958,14 +990,14 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
   const systems = {};
   const errors = {};
   const [aResult, bResult, uResult, tResult] = await Promise.allSettled([
-    getPv14000Json("/api/live?fresh=1").then(normalizePv14000),
+    PV14000_API_BASE ? getPv14000Json("/api/live?fresh=1").then(normalizePv14000) : Promise.resolve(null),
     getPv9000Json("/api/live?fresh=1").then(normalizePv9000),
     getJson(`${MATRIX_API_BASE}/api/matrix`).then(normalizeMatrixUps),
     getJson(`${TUYA_API_BASE}/api/meter`).then(normalizeTuyaMeter)
   ]);
 
-  if (aResult.status === "fulfilled") systems.pv14000 = aResult.value;
-  else errors.pv14000 = sourceHint("PV14000", aResult.reason);
+  if (aResult.status === "fulfilled" && aResult.value) systems.pv14000 = aResult.value;
+  else if (PV14000_API_BASE && aResult.status === "rejected") errors.pv14000 = sourceHint("PV14000", aResult.reason);
   if (bResult.status === "fulfilled") systems.pv9000 = bResult.value;
   else errors.pv9000 = sourceHint("PV9000", bResult.reason);
   if (uResult.status === "fulfilled") systems.matrix = uResult.value;
@@ -978,9 +1010,10 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
   const connected = [systems.pv14000, systems.pv9000, systems.matrix].filter(Boolean).length;
   const result = {
     ok: connected > 0,
-    complete: connected === 3,
+    complete: connected === EXPECTED_MONITORED_SYSTEMS,
     connected,
-    totalSystems: 3,
+    totalSystems: EXPECTED_MONITORED_SYSTEMS,
+    physicalSystems: 3,
     systems,
     meter,
     errors,
@@ -997,6 +1030,7 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
       matrixPvW: 0,
       matrixAcW: MATRIX_AC_CAPACITY_W,
       totalPvW: TOTAL_PV_INSTALLED_W,
+      monitoredPvW: CURRENT_MONITORED_PV_W,
       batteryKwh: BATTERY_CAPACITY_KWH || null
     },
     guardrails: {
@@ -1006,6 +1040,13 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
       reconciliationAlertW: RECONCILIATION_ALERT_W, alertTempC: ALERT_TEMP_C
     },
     topology: systems.combined.topology,
+    telemetryPlan: {
+      pv14000: PV14000_API_BASE ? "configured" : "waiting-for-new-wifi-logger",
+      pv9000: "reassigned-wifi-logger",
+      pv9000Strings: 1,
+      pv9000Panels: 8,
+      pv9000PanelWatts: 545
+    },
     history: {
       online: Boolean(pool && dbReady),
       storage: pool && dbReady ? "PostgreSQL" : "source/fallback",
@@ -1096,13 +1137,13 @@ async function fetchHistory(hours = 24) {
   const stored = await dbHistory(hours);
   if (stored) return stored;
   const [aResult, bResult, uResult] = await Promise.allSettled([
-    getPv14000Json(`/api/history?hours=${hours}`),
+    PV14000_API_BASE ? getPv14000Json(`/api/history?hours=${hours}`) : Promise.resolve(null),
     getPv9000Json(`/api/history?hours=${hours}`),
     getJson(`${MATRIX_API_BASE}/api/history?hours=${hours}`)
   ]);
   return {
     ok: true,
-    pv14000: aResult.status === "fulfilled" ? normalizeHistory(aResult.value, "solar") : [],
+    pv14000: aResult.status === "fulfilled" && aResult.value ? normalizeHistory(aResult.value, "solar") : [],
     pv9000: bResult.status === "fulfilled" ? normalizeHistory(bResult.value, "solar") : [],
     matrix: uResult.status === "fulfilled" ? normalizeHistory(uResult.value, "ups") : [],
     combined: [],
@@ -1247,7 +1288,7 @@ async function fetchAnalytics() {
   const remainingBatteryKwh = BATTERY_CAPACITY_KWH > 0 && soc != null ? BATTERY_CAPACITY_KWH * Math.max(0, Math.min(100, soc)) / 100 : null;
   const backupRuntimeHours = remainingBatteryKwh != null && upsLoadW >= 50 ? remainingBatteryKwh / (upsLoadW / 1000) : null;
   const balanceUsingPhysicalW = physicalSignedW == null ? null : num(c.solarW) + physicalSignedW - num(c.siteDemandW);
-  const solarCapacityPct = TOTAL_PV_INSTALLED_W > 0 ? num(c.solarW) / TOTAL_PV_INSTALLED_W * 100 : 0;
+  const solarCapacityPct = CURRENT_MONITORED_PV_W > 0 ? num(c.solarW) / CURRENT_MONITORED_PV_W * 100 : 0;
   return {
     ok: Boolean(live.ok), updatedAt: Date.now(), timezone: "Asia/Karachi",
     mode: { dayMode: clock.dayMode, label: clock.label, dayStart: DAY_MODE_START, dayEnd: DAY_MODE_END },
@@ -1256,7 +1297,8 @@ async function fetchAnalytics() {
       electricityRatePkr: RATE, exportRatePkr: EXPORT_RATE,
       batteryCapacityKwh: BATTERY_CAPACITY_KWH || null,
       targetDailyYieldKwhPerKwp: TARGET_DAILY_YIELD_KWH_PER_KWP || null,
-      reconciliationAlertW: RECONCILIATION_ALERT_W, alertTempC: ALERT_TEMP_C
+      reconciliationAlertW: RECONCILIATION_ALERT_W, alertTempC: ALERT_TEMP_C,
+      physicalPvInstalledW: TOTAL_PV_INSTALLED_W, monitoredPvInstalledW: CURRENT_MONITORED_PV_W
     },
     current: {
       solarW: num(c.solarW), demandW: num(c.siteDemandW), inverterGridW: inverterSignedW,
@@ -1489,7 +1531,7 @@ function buildLiveAlerts(live) {
   const s = live?.systems || {};
   const a = s.pv14000 || null, b = s.pv9000 || null, u = s.matrix || null, c = s.combined || {};
   const m = live?.meter || null;
-  if (!a) add("pv14000-offline", "critical", "PV14000 OFFLINE", "Fronus Meta 10 kW telemetry is unavailable.", "Check inverter/Wi-Fi/API path.");
+  if (PV14000_API_BASE && !a) add("pv14000-offline", "critical", "PV14000 OFFLINE", "Fronus Meta 10 kW telemetry is unavailable.", "Check the new inverter Wi-Fi/API path.");
   if (PV9000_API_BASE && !b) add("pv9000-offline", "warning", "PV9000 OFFLINE", "Fronus Meta 6 kW telemetry is unavailable.", "Check inverter Wi-Fi and PV9000 API service.");
   if (!u) add("matrix-offline", "critical", "MATRIX UPS OFFLINE", "Matrix UPS telemetry is unavailable.", "Check UPS communication before maintenance decisions.");
   if (!m?.online) add("tuya-offline", "critical", "TUYA GRID METER OFFLINE", "Physical utility meter data is unavailable, so grid guardrails cannot be trusted.", "Check Tuya cloud/device connectivity.");
@@ -1600,8 +1642,9 @@ async function buildAiTelemetryContext() {
     site: "Raja Fraz Solar Estate",
     topology: {
       installedPvKw: TOTAL_PV_INSTALLED_W / 1000,
-      pv14000: "Fronus Meta 10kW, 6.78 kWp PV",
-      pv9000: "Fronus Meta 6kW, 4.36 kWp PV; feeds Matrix UPS and Smart Load",
+      monitoredPvKw: CURRENT_MONITORED_PV_W / 1000,
+      pv14000: PV14000_API_BASE ? "Fronus Meta 10kW, 6.78 kWp PV; telemetry configured" : "Fronus Meta 10kW, 6.78 kWp physically installed; new WiFi logger pending; intentionally excluded from live totals",
+      pv9000: "Fronus Meta 6kW; one active string of 8 × 545 W = 4.36 kWp; reassigned WiFi logger; feeds Matrix UPS and Smart Load",
       matrix: "Fronus Matrix 6kW used as PV-less UPS",
       physicalMeter: "Tuya grid meter",
       matrixLoadExcludedFromSiteDemandWhenContainedInPv9000: PV9000_LOAD_INCLUDES_UPS
@@ -1779,7 +1822,8 @@ async function askSolarAi(message, history) {
 
 Rules:
 - Use the TELEMETRY SNAPSHOT below as the source of truth for current readings. If a source is offline/stale/missing, say that clearly and do not invent a value.
-- Understand the physical topology: PV14000 and PV9000 are the solar inverters; PV9000 feeds the Matrix UPS; Matrix is PV-less; Tuya is the independent physical utility meter.
+- Understand the current topology: PV9000 is the only live-monitored solar inverter and uses one string of 8 × 545 W panels (4.36 kWp). Its WiFi logger was reassigned from PV14000. PV14000 remains physically installed at 6.78 kWp but is intentionally excluded from live totals until a new logger is installed. PV9000 feeds the Matrix UPS; Matrix is PV-less; Tuya is the independent physical utility meter.
+- Never describe PV14000 as failed or offline when its logger is unconfigured; say "logger pending" or "intentionally unmonitored". Physical installed PV is 11.14 kWp, while currently monitored PV is 4.36 kWp.
 - Matrix downstream load can already be included in PV9000 load, so do not double-count it.
 - Tuya Consumption means grid import and Generate means grid export when that direction is confirmed.
 - The dashboard's guardrails are monitoring targets, not automatic control: night import 5 kW and day export 6 kW unless telemetry config says otherwise.
@@ -1915,12 +1959,12 @@ const server = http.createServer(async (req, res) => {
     }));
     if (url.pathname === "/api/health") return json(res, 200, {
       success: true,
-      service: "Raja Fraz Master Solar Command Center - Three Inverter Edition",
-      pv14000: { base: PV14000_API_BASE, configured: Boolean(PV14000_API_BASE), authConfigured: Boolean(PV14000_PASSWORD) },
+      service: "Raja Fraz Master Solar Command Center - V37 Logger Reassignment",
+      pv14000: { base: PV14000_API_BASE || null, configured: Boolean(PV14000_API_BASE), state: PV14000_API_BASE ? "configured" : "waiting-for-new-wifi-logger", authConfigured: Boolean(PV14000_PASSWORD) },
       pv9000: { base: PV9000_API_BASE || null, configured: Boolean(PV9000_API_BASE), authConfigured: Boolean(PV9000_PASSWORD) },
       matrix: { base: MATRIX_API_BASE, configured: Boolean(MATRIX_API_BASE), role: "UPS", pvInstalledW: 0 },
-      capacities: { pv14000PvW: PV14000_PV_INSTALLED_W, pv14000AcW: PV14000_AC_CAPACITY_W, pv9000PvW: PV9000_PV_INSTALLED_W, pv9000AcW: PV9000_AC_CAPACITY_W, matrixAcW: MATRIX_AC_CAPACITY_W, totalPvW: TOTAL_PV_INSTALLED_W },
-      topology: { pv9000FeedsMatrix: true, matrixIsUps: true, smartLoadSource: "PV9000", pv9000LoadIncludesUps: PV9000_LOAD_INCLUDES_UPS, pv9000LoadIncludesSmart: PV9000_LOAD_INCLUDES_SMART },
+      capacities: { pv14000PvW: PV14000_PV_INSTALLED_W, pv14000AcW: PV14000_AC_CAPACITY_W, pv9000PvW: PV9000_PV_INSTALLED_W, pv9000AcW: PV9000_AC_CAPACITY_W, matrixAcW: MATRIX_AC_CAPACITY_W, totalPvW: TOTAL_PV_INSTALLED_W, monitoredPvW: CURRENT_MONITORED_PV_W },
+      topology: { pv9000FeedsMatrix: true, matrixIsUps: true, smartLoadSource: "PV9000", pv9000Strings: 1, pv9000Panels: 8, pv9000PanelWatts: 545, pv14000Telemetry: PV14000_API_BASE ? "configured" : "logger-pending", pv9000LoadIncludesUps: PV9000_LOAD_INCLUDES_UPS, pv9000LoadIncludesSmart: PV9000_LOAD_INCLUDES_SMART },
       intelligence: { nightImportLimitW: NIGHT_IMPORT_LIMIT_W, dayExportLimitW: DAY_EXPORT_LIMIT_W, dayModeStart: DAY_MODE_START, dayModeEnd: DAY_MODE_END, batteryCapacityKwh: BATTERY_CAPACITY_KWH || null, exportRatePkr: EXPORT_RATE },
       ai: { ...aiProviderState(), configured: Boolean(GEMINI_API_KEY || OPENAI_API_KEY), pinRequired: Boolean(AI_ACCESS_PIN), readOnly: true },
       notifications: await notificationStatus(),

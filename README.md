@@ -1,3 +1,44 @@
+# Raja Fraz Master Solar Dashboard - V37 PV9000 LOGGER REASSIGNMENT
+
+V37 maps the existing live WiFi logger to PV9000 and treats PV14000 as a physically installed but intentionally unmonitored asset until its new logger is ordered and installed.
+
+## V37 live topology
+
+- **PV9000 is the only live-monitored solar inverter:** one active string, `8 × 545 W = 4,360 W` (4.36 kWp).
+- The existing `inverterzone-dashboard.onrender.com` logger/API is now assigned to PV9000.
+- **PV14000 remains physically installed:** 10 kW AC inverter with 6.78 kWp PV, but its live telemetry and energy are excluded from current totals.
+- Physical installed PV remains **11.14 kWp**; currently monitored PV is **4.36 kWp**.
+- Matrix remains the downstream PV-less UPS supplied from PV9000; its internal AC transfer is not counted as utility-grid import.
+- Health, Flow, Control Room, Intelligence, AI context, totals, charts, tools and exported snapshots now distinguish `LOGGER PENDING` from a genuine device failure.
+- Existing PV14000 historical records are preserved.
+
+## Render variables for V37
+
+`PV9000_API_BASE=https://inverterzone-dashboard.onrender.com` is included in `render.yaml`. Leave `PV14000_NEW_API_BASE` empty until the new PV14000 logger/API is ready. At that time, enter its URL and redeploy; the dashboard will automatically include both solar inverters again.
+
+The server also recognizes an existing `PV14000_API_BASE` value as the legacy logger and automatically routes it to PV9000, so current Render installations can upgrade without losing the live logger connection.
+
+---
+
+# Raja Fraz Master Solar Dashboard - V36 DESKTOP CONTROL ROOM
+
+V36 makes the widescreen Control Room the default landing experience while preserving every V35 operator tool, organized device-photo flow, alert and intelligence feature.
+
+## V36 highlights
+- Desktop-first **Control Room** now opens by default instead of the general dashboard.
+- New live incident ticker with automatic normal, watch and action-required states.
+- Six-metric command rail for estate solar, demand, physical grid, active guard, UPS reserve and power balance.
+- Dedicated live asset rail for PV14000, PV9000, Matrix UPS and the Tuya physical meter.
+- Focus mode removes navigation and turns the page into a clean wall-display surface.
+- Dense mode fits substantially more telemetry on 1080p and 4K control-room displays.
+- Keyboard control: `1` Control Room, `2` Dashboard, `3` Energy Flow, `4` Tools, `F` Focus and `D` Density.
+- Direct Energy Flow and Operator Tools launch buttons from the main cockpit.
+- Control-room display preferences persist locally in the browser.
+
+No new environment variables are required for V36.
+
+---
+
 # Raja Fraz Master Solar Dashboard - V35 OPERATOR TOOLKIT
 
 V35 turns the dashboard into a practical planning workbench while preserving the complete V34 organized photo flow and all existing live monitoring features.
@@ -380,11 +421,15 @@ Professional master monitoring for the three-inverter topology plus the independ
 ### System 01 - FRONUS META 10KW - PV14000
 - AC output capacity: **10,000 W**
 - Installed PV: **6,780 W**
-- Role: primary solar inverter
+- Role: physical solar inverter; **new WiFi logger pending**
+- Current live telemetry: intentionally excluded until `PV14000_NEW_API_BASE` is configured
 
 ### System 02 - FRONUS META 6KW - PV9000
 - AC output capacity: **6,000 W**
 - Installed PV: **4,360 W**
+- Active PV strings: **1**
+- String layout: **8 × 545 W = 4,360 W**
+- WiFi logger: reassigned from PV14000 and used as the current live solar source
 - Role: solar inverter + distribution source
 - Feeds the **Matrix UPS AC input**
 - Feeds **Smart Load directly**
@@ -399,34 +444,37 @@ Professional master monitoring for the three-inverter topology plus the independ
 
 The dashboard is topology-aware to prevent double-counting.
 
-- **Total solar = PV14000 solar + PV9000 solar**
+- **Current monitored solar = PV9000 solar only**
 - **Total installed PV = 6,780 + 4,360 = 11,140 W**
-- **Utility grid = PV14000 utility grid + PV9000 utility grid**
+- **Current monitored PV = 4,360 W**
+- **Current inverter grid estimate = PV9000 grid**; Tuya remains the independent physical reference.
+- When `PV14000_NEW_API_BASE` is later configured, the dashboard automatically adds PV14000 back into monitored totals.
 - Matrix AC input is an internal PV9000 -> Matrix transfer and is **not** utility-grid power.
 - Smart Load belongs to PV9000.
 - By default, Matrix UPS load is downstream of PV9000 and is **not added again** to Master site demand.
 
 ## Render environment variables
 
-Existing settings continue to work for the first inverter.
+V37 live logger mapping:
 
 ```text
-PV14000_API_BASE=https://inverterzone-dashboard.onrender.com
+PV9000_API_BASE=https://inverterzone-dashboard.onrender.com
 META_DASHBOARD_USER=admin
 META_DASHBOARD_PASSWORD=<existing dashboard password>
 MATRIX_API_BASE=https://fronus-matrix-dashboard.onrender.com
 ```
 
-New required variable for System 02:
+Leave the new PV14000 logger URL empty until it is installed:
 
 ```text
-PV9000_API_BASE=<URL of the online FRONUS META 6KW - PV9000 dashboard/API>
+PV14000_NEW_API_BASE=
 ```
 
-If PV9000 uses the same Basic Auth password as PV14000, no additional password variable is needed. If it uses a different password, add:
+When the new logger is ready, set `PV14000_NEW_API_BASE` and, only if its Basic Auth differs, add:
 
 ```text
-PV9000_DASHBOARD_PASSWORD=<PV9000 dashboard password>
+PV14000_NEW_DASHBOARD_USER=admin
+PV14000_NEW_DASHBOARD_PASSWORD=<new PV14000 logger password>
 ```
 
 Optional topology controls:
