@@ -1,3 +1,25 @@
+# Raja Fraz Master Solar Dashboard - V38 POWER SMART + ANDROID
+
+V38 adds a secure, owner-authorized GEPCO/PITC Power Smart account view and a portrait-first Android application layout while preserving the V37 PV9000 logger mapping.
+
+## V38 highlights
+
+- New **Power Smart** tab using the owner's normal `api-powersmart.pitc.com.pk` account sign-in.
+- Power Smart password is sent only for sign-in and is never saved to disk, browser storage, source files or logs.
+- Account token is held in a random, HTTP-only, same-site server session for up to 8 hours.
+- Registered reference numbers and customer IDs are masked before they reach the browser.
+- Official monthly consumption history is displayed beside the independent live Tuya meter and PV9000 grid estimate.
+- No extracted/shared MDM private key is embedded. Instant MDM data stays disabled unless PITC separately authorizes it.
+- Sign-in rate limiting, same-origin mutation checks, cache controls and read-only routes are included.
+- Samsung Galaxy S23 Ultra portrait mode gets compact command landing, fixed bottom navigation, larger touch targets, safe-area spacing and single-column Power Smart forms.
+
+Optional tuning variables:
+
+- `POWER_SMART_SESSION_HOURS=8`
+- `POWER_SMART_CACHE_SECONDS=120`
+
+---
+
 # Raja Fraz Master Solar Dashboard - V37 PV9000 LOGGER REASSIGNMENT
 
 V37 maps the existing live WiFi logger to PV9000 and treats PV14000 as a physically installed but intentionally unmonitored asset until its new logger is ordered and installed.

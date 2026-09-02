@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+const $q = (sel) => document.querySelector(sel);
 const COLORS = {
   solar:'#f6b526', load:'#357be8', grid:'#18a96b', import:'#ef4655', smart:'#f68b22',
   pv14000:'#2f7bf0', pv9000:'#7657f2', matrix:'#0aa6a6', battery:'#21a86a', combined:'#082b43'
@@ -31,6 +32,9 @@ let ultraLastState = null;
 let toolsInitialized = false;
 let toolsSeededFromLive = false;
 let toolHasSavedPrefs = false;
+let powerSmartState = { connected:false };
+let powerSmartData = null;
+let powerSmartBusy = false;
 
 function set(id, value) { const el = $(id); if (el) el.textContent = value; }
 function uiIcon(name, cls='') { return `<svg class="uiIcon ${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`; }
@@ -88,17 +92,25 @@ function classFromPct(p){return p>=100?'danger':p>=80?'warn':'good';}
 function updateAlertBadge(){set('alertCount',String(connectionAlertCount+smartAlertCount));}
 setInterval(clock,1000); clock();
 
-$$('.navtab').forEach((button)=>button.addEventListener('click',()=>{
+function activateDashboardView(button){
+  if(!button)return;
   $$('.navtab').forEach((b)=>b.classList.toggle('active',b===button));
   $$('.view').forEach((v)=>v.classList.remove('active'));
   $(button.dataset.view)?.classList.add('active');
+  $$('.mobileDock [data-mobile-view]').forEach((b)=>b.classList.toggle('active',b.dataset.mobileView===button.dataset.view||(b.dataset.mobileView==='command'&&button.dataset.view==='mission')));
   const isControl=button.dataset.view==='mission';document.body.classList.toggle('controlRoomActive',isControl);
   if(!isControl&&document.body.classList.contains('controlFocusMode'))setControlFocus(false);
+  try{window.history.replaceState(null,'',`${location.pathname}?view=${encodeURIComponent(button.dataset.view)}`);}catch(_error){}
   requestAnimationFrame(drawAll);
+}
+$$('.navtab').forEach((button)=>button.addEventListener('click',()=>activateDashboardView(button)));
+$$('.mobileDock [data-mobile-view]').forEach((button)=>button.addEventListener('click',()=>{
+  const target=$q(`.navtab[data-view="${button.dataset.mobileView}"]`);if(target)activateDashboardView(target);window.scrollTo({top:0,behavior:'smooth'});
 }));
 const requestedView=new URLSearchParams(location.search).get('view');
-if(requestedView&&$(requestedView)){const btn=$(`.navtab[data-view="${requestedView.replace(/[^a-z0-9_-]/gi,'')}"]`);if(btn)btn.click();}
-$('ultraRibbonOpen')?.addEventListener('click',()=>{$('.navtab[data-view="mission"]')?.click();window.scrollTo({top:0,behavior:'smooth'});});
+if(requestedView&&$(requestedView)){const btn=$q(`.navtab[data-view="${requestedView.replace(/[^a-z0-9_-]/gi,'')}"]`);if(btn)btn.click();}
+else if(matchMedia('(max-width:700px) and (orientation:portrait)').matches){$q('.navtab[data-view="command"]')?.click();}
+$('ultraRibbonOpen')?.addEventListener('click',()=>{$q('.navtab[data-view="mission"]')?.click();window.scrollTo({top:0,behavior:'smooth'});});
 $('ultraFullscreen')?.addEventListener('click',async()=>{try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen();}catch(_error){}});
 
 $$('.rangeButtons button').forEach((button)=>button.addEventListener('click',()=>{
@@ -385,6 +397,61 @@ async function loadWeather(){
   try{const r=await fetch('/api/master/weather',{cache:'no-store'});const w=await r.json();const d=w.data||{};const t=d.temperature??d.temperature_2m??d.current?.temperature_2m;if(Number.isFinite(Number(t)))set('weather',`☁ ${Math.round(Number(t))}° Gujrat`);}catch(_error){}
 }
 
+function powerSmartMessage(id,text='',kind='error'){
+  const box=$(id);if(!box)return;box.hidden=!text;box.textContent=text;box.classList.toggle('ok',kind==='ok');
+}
+function powerSmartSetBusy(busy,label='Connecting…'){
+  powerSmartBusy=busy;const button=$('powerSmartConnectButton');if(button){button.disabled=busy;button.textContent=busy?label:'Connect official account';}
+  ['powerSmartRefresh','powerSmartReload','powerSmartDisconnect','powerSmartMeterSelect'].forEach(id=>{const el=$(id);if(el)el.disabled=busy;});
+}
+function powerSmartSessionText(expiresAt){
+  if(!expiresAt)return'--';const ms=new Date(expiresAt).getTime()-Date.now();if(!Number.isFinite(ms)||ms<=0)return'EXPIRED';const hours=Math.floor(ms/3600000),minutes=Math.max(0,Math.floor(ms%3600000/60000));return hours?`${hours}h ${minutes}m`:`${minutes} min`;
+}
+function renderPowerSmartState(){
+  const connected=Boolean(powerSmartState?.connected);const login=$('powerSmartLoginPanel'),panel=$('powerSmartConnectedPanel');if(login)login.hidden=connected;if(panel)panel.hidden=!connected;
+  set('powerSmartStatus',connected?'CONNECTED':'NOT CONNECTED');$('powerSmartStatus')?.classList.toggle('connected',connected);set('powerSmartNavState',connected?'LIVE':'NEW');
+  set('powerSmartFreshness',connected?(powerSmartState.lastFetchAt?`Updated ${ageText(powerSmartState.lastFetchAt)}`:'Account connected'):'Sign in once per server session');
+  if(!connected)return;
+  set('powerSmartAccountName',powerSmartState.accountName||'Power Smart User');set('powerSmartMeterRef',powerSmartState.selectedMeterRef||'Meter');set('powerSmartCategory',powerSmartState.selectedCategory||'--');set('powerSmartSession',powerSmartSessionText(powerSmartState.expiresAt));
+  const select=$('powerSmartMeterSelect');if(select){const selected=powerSmartState.selectedMeterId;select.replaceChildren();for(const meter of powerSmartState.meters||[]){const option=document.createElement('option');option.value=meter.id;option.textContent=`${meter.refMasked}${meter.isDefault?' • default':''}${meter.category?` • ${meter.category}`:''}`;option.selected=meter.id===selected;select.appendChild(option);}}
+}
+function renderPowerSmartBars(rows=[]){
+  const box=$('powerSmartBars');if(!box)return;box.replaceChildren();const usable=rows.filter(row=>Number.isFinite(Number(row.kwh))).slice(-12);if(!usable.length){const empty=document.createElement('div');empty.className='powerSmartEmpty';empty.textContent='PITC connected, but no monthly consumption rows were returned for this meter.';box.appendChild(empty);return;}
+  const max=Math.max(1,...usable.map(row=>Number(row.kwh)));for(const row of usable){const bar=document.createElement('div');bar.className='powerSmartBar';const value=document.createElement('b');value.textContent=`${Number(row.kwh).toFixed(1)} kWh`;const column=document.createElement('i');column.style.setProperty('--bar-height',`${Math.max(4,Number(row.kwh)/max*100)}%`);const label=document.createElement('span');label.textContent=[row.label,row.year].filter(Boolean).join(' ');bar.append(value,column,label);box.appendChild(bar);}
+}
+function renderPowerSmartData(){
+  if(!powerSmartData){set('powerSmartCurrentKwh','--');set('powerSmartRecordCount','--');renderPowerSmartBars([]);return;}
+  const current=powerSmartData.current||powerSmartData.latest;set('powerSmartCurrentKwh',current?.kwh==null?'--':`${Number(current.kwh).toFixed(2)} kWh`);set('powerSmartCurrentLabel',current?.label||'Latest official record');set('powerSmartRecordCount',String(finite(powerSmartData.records)));set('powerSmartUpdated',powerSmartData.refreshedAt?new Date(powerSmartData.refreshedAt).toLocaleString('en-PK',{timeZone:'Asia/Karachi'}):'--');
+  renderPowerSmartBars(powerSmartData.history||[]);renderPowerSmartComparison();
+}
+function renderPowerSmartComparison(){
+  const meter=live?.meter||null,c=live?.systems?.combined||{};const physical=meterSignedW(meter);set('powerSmartTuyaPower',physical==null?'OFFLINE':fmtGridSigned(physical));set('powerSmartTuyaMode',meter?.online?`${meter.mode||'LIVE'} • ${ageText(meter.updatedAt)}`:'Independent physical meter unavailable');set('powerSmartTuyaDetail',physical==null?'Tuya meter unavailable':`${fmtGridSigned(physical)} • ${finite(meter.voltage).toFixed(1)} V`);set('powerSmartInverterDetail',live?fmtGridSigned(finite(c.gridW)):'Waiting for PV9000');
+}
+async function loadPowerSmartStatus(){
+  try{const response=await fetch('/api/master/powersmart/status',{cache:'no-store',credentials:'same-origin'});const data=await response.json();powerSmartState=data;renderPowerSmartState();if(data.connected)await loadPowerSmartData(false);}catch(error){powerSmartState={connected:false};renderPowerSmartState();powerSmartMessage('powerSmartLoginMessage',`Power Smart bridge unavailable: ${error.message}`);}
+}
+async function loadPowerSmartData(force=false){
+  if(!powerSmartState.connected||powerSmartBusy)return;powerSmartSetBusy(true,'Loading…');powerSmartMessage('powerSmartDataMessage','');
+  try{const response=await fetch(`/api/master/powersmart/data${force?'?fresh=1':''}`,{cache:'no-store',credentials:'same-origin'});const data=await response.json();if(!response.ok||!data.ok)throw Object.assign(new Error(data.error||'Power Smart data failed'),{status:response.status});powerSmartData=data;powerSmartState={...powerSmartState,lastFetchAt:Date.now()};renderPowerSmartState();renderPowerSmartData();powerSmartMessage('powerSmartDataMessage',force?'Official data refreshed.':'','ok');}
+  catch(error){if(error.status===401){powerSmartState={connected:false};powerSmartData=null;renderPowerSmartState();}else powerSmartMessage('powerSmartDataMessage',error.message);}
+  finally{powerSmartSetBusy(false);}
+}
+async function connectPowerSmart(event){
+  event?.preventDefault();if(powerSmartBusy)return;const email=$('powerSmartEmail')?.value.trim(),password=$('powerSmartPassword')?.value||'',cnic=$('powerSmartCnic')?.value.trim()||'';powerSmartMessage('powerSmartLoginMessage','');powerSmartSetBusy(true);
+  try{const response=await fetch('/api/master/powersmart/connect',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,cnic})});const data=await response.json();if(!response.ok||!data.connected)throw new Error(data.error||'Power Smart sign-in failed.');powerSmartState=data;powerSmartData=data.data||null;if($('powerSmartPassword'))$('powerSmartPassword').value='';renderPowerSmartState();renderPowerSmartData();if(data.dataError)powerSmartMessage('powerSmartDataMessage',`Account connected. Consumption feed: ${data.dataError}`);else powerSmartMessage('powerSmartDataMessage','Power Smart account connected securely.','ok');}
+  catch(error){if($('powerSmartPassword'))$('powerSmartPassword').value='';powerSmartMessage('powerSmartLoginMessage',error.message);}
+  finally{powerSmartSetBusy(false);}
+}
+async function selectPowerSmartMeter(){
+  if(powerSmartBusy)return;const meterId=$('powerSmartMeterSelect')?.value;if(!meterId)return;powerSmartSetBusy(true,'Switching…');powerSmartMessage('powerSmartDataMessage','');try{const response=await fetch('/api/master/powersmart/select-meter',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({meterId})});const data=await response.json();if(!response.ok||!data.connected)throw new Error(data.error||'Meter switch failed.');powerSmartState=data;powerSmartData=data.data||null;renderPowerSmartState();renderPowerSmartData();}catch(error){powerSmartMessage('powerSmartDataMessage',error.message);}finally{powerSmartSetBusy(false);}
+}
+async function disconnectPowerSmart(){
+  if(powerSmartBusy)return;powerSmartSetBusy(true,'Disconnecting…');try{await fetch('/api/master/powersmart/disconnect',{method:'POST',credentials:'same-origin'});}catch(_error){}powerSmartState={connected:false};powerSmartData=null;renderPowerSmartState();renderPowerSmartData();powerSmartSetBusy(false);
+}
+function initPowerSmart(){
+  $('powerSmartLoginForm')?.addEventListener('submit',connectPowerSmart);$('powerSmartRefresh')?.addEventListener('click',()=>loadPowerSmartData(true));$('powerSmartReload')?.addEventListener('click',()=>loadPowerSmartData(true));$('powerSmartDisconnect')?.addEventListener('click',disconnectPowerSmart);$('powerSmartMeterSelect')?.addEventListener('change',selectPowerSmartMeter);renderPowerSmartState();
+}
+
 function render(){
   if(!live)return;
   const s=live.systems||{}; const a=s.pv14000; const b=s.pv9000; const u=s.matrix; const c=s.combined||{}; const m=live.meter||null;
@@ -404,6 +471,7 @@ function render(){
   renderAiLiveContext();
   renderUltraDeck(a,b,u,c,m);
   renderControlRoom(a,b,u,c,m);
+  renderPowerSmartComparison();
   drawAll();
 }
 function setState(id,online){set(id,online?'ONLINE':'OFFLINE');const el=$(id);el?.classList.toggle('online',Boolean(online));el?.classList.remove('pending');}
@@ -858,7 +926,7 @@ function drawUltraPulse(){
 /* =========================================================
    V37 DESKTOP CONTROL ROOM - PV9000 logger reassignment
    ========================================================= */
-function openControlView(name){$('.navtab[data-view="'+name+'"]')?.click();window.scrollTo({top:0,behavior:'smooth'});}
+function openControlView(name){$q('.navtab[data-view="'+name+'"]')?.click();window.scrollTo({top:0,behavior:'smooth'});}
 function setControlFocus(enabled){document.body.classList.toggle('controlFocusMode',Boolean(enabled));set('controlFocus',enabled?'◉ EXIT FOCUS':'◉ FOCUS');requestAnimationFrame(()=>{drawAll();drawUltraPulse();});}
 function setControlDensity(enabled){document.body.classList.toggle('controlDense',Boolean(enabled));set('controlDensity',enabled?'▦ COMFORT':'▦ DENSE');try{localStorage.setItem('rajaFrazControlDense',enabled?'1':'0');}catch(_error){}requestAnimationFrame(()=>{drawAll();drawUltraPulse();});}
 function initControlRoom(){
@@ -1028,8 +1096,9 @@ async function start(){
   initTuyaPickers();
   initControlRoom();
   initOperatorTools();
+  initPowerSmart();
   await wakeMasterSources();
-  await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadAnalytics(),loadTimelineHistory(),loadWeather(),loadTuyaQuickTotals(),loadAiStatus(),loadNotificationStatus()]);
+  await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadAnalytics(),loadTimelineHistory(),loadWeather(),loadTuyaQuickTotals(),loadAiStatus(),loadNotificationStatus(),loadPowerSmartStatus()]);
   if(!todayEnergy)todayEnergy=energy?.period==='T'?energy:null;
   await loadSelectedTuyaEnergy();
   renderIntelligenceCenter(); renderCommandView(); renderAiLiveContext(); drawDailyTimeline(); drawUltraPulse();
@@ -1040,6 +1109,8 @@ async function start(){
   setInterval(loadTimelineHistory,60000);
   setInterval(loadTodayEnergy,300000);
   setInterval(loadTuyaQuickTotals,300000);
+  setInterval(()=>{if(powerSmartState.connected)loadPowerSmartData(false);},300000);
+  setInterval(renderPowerSmartState,60000);
   setInterval(loadWeather,600000);
 }
 setInterval(()=>{loadNotificationStatus().catch(()=>{});},60000);

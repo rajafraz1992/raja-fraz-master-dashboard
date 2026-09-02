@@ -1,10 +1,11 @@
 {
   "name": "raja-fraz-master-solar-command-center",
-  "version": "37.0.0",
+  "version": "38.0.0",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
     "check": "node --check server.mjs && node --check app/dashboard.js && node --check app/display.js",
+    "test": "node --test test/*.test.mjs",
     "vapid": "node scripts/generate-vapid.mjs"
   },
   "dependencies": {

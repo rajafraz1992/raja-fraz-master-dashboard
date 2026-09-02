@@ -56,6 +56,10 @@ services:
         value: 65
       - key: HISTORY_SAMPLE_SECONDS
         value: 60
+      - key: POWER_SMART_SESSION_HOURS
+        value: 8
+      - key: POWER_SMART_CACHE_SECONDS
+        value: 120
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL

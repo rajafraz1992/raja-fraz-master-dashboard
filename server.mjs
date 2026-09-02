@@ -3,6 +3,8 @@ import { readFileSync, existsSync } from "node:fs";
 import { extname, join, resolve, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import { randomBytes } from "node:crypto";
+import { normalizePowerSmartMonthly } from "./lib/powersmart-normalize.mjs";
 import pg from "pg";
 import webpush from "web-push";
 
@@ -62,6 +64,16 @@ const RECONCILIATION_ALERT_W = Math.max(100, Number(process.env.RECONCILIATION_A
 const ALERT_TEMP_C = Math.max(30, Number(process.env.ALERT_TEMP_C || 65));
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const HISTORY_SAMPLE_SECONDS = Math.max(30, Number(process.env.HISTORY_SAMPLE_SECONDS || 60));
+
+// Power Smart / PITC account bridge. This integration intentionally uses only
+// the owner's normal Power Smart account session. No shared or extracted MDM
+// service credential is embedded in this project.
+const POWER_SMART_APP_BASE = "https://api-powersmart.pitc.com.pk";
+const POWER_SMART_SESSION_HOURS = Math.max(1, Math.min(24, Number(process.env.POWER_SMART_SESSION_HOURS || 8)));
+const POWER_SMART_SESSION_MS = POWER_SMART_SESSION_HOURS * 60 * 60 * 1000;
+const POWER_SMART_CACHE_MS = Math.max(30_000, Number(process.env.POWER_SMART_CACHE_SECONDS || 120) * 1000);
+const powerSmartSessions = new Map();
+const powerSmartSignInAttempts = new Map();
 
 // Optional AI Copilot. Gemini is the zero-cost/default provider when a
 // GEMINI_API_KEY is configured. OpenAI remains an optional fallback. Keys never
@@ -313,6 +325,209 @@ async function getJson(url, { timeoutMs = 16000, headers = {} } = {}) {
   } finally {
     clearTimeout(timer);
   }
+}
+async function postJson(url, body, { timeoutMs = 18000, headers = {} } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Raja-Fraz-Master/38.0",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        ...headers
+      },
+      body: JSON.stringify(body || {})
+    });
+    const raw = await response.text();
+    let data;
+    try { data = JSON.parse(raw); }
+    catch {
+      const error = new Error(`Power Smart returned a non-JSON response (HTTP ${response.status}).`);
+      error.status = response.status || 502;
+      throw error;
+    }
+    if (!response.ok) {
+      const error = new Error(String(data?.message || data?.error || `HTTP ${response.status}`).slice(0, 260));
+      error.status = response.status;
+      error.payload = data;
+      throw error;
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function powerSmartCleanRef(value) {
+  return String(value || "").replace(/\D/g, "").slice(0, 20);
+}
+function powerSmartMaskRef(value) {
+  const ref = powerSmartCleanRef(value);
+  if (!ref) return "Meter";
+  if (ref.length <= 6) return `••${ref.slice(-3)}`;
+  return `${ref.slice(0, 3)}•••••••${ref.slice(-4)}`;
+}
+function powerSmartCookieMap(req) {
+  const out = {};
+  for (const part of String(req.headers.cookie || "").split(";")) {
+    const at = part.indexOf("=");
+    if (at <= 0) continue;
+    out[part.slice(0, at).trim()] = decodeURIComponent(part.slice(at + 1).trim());
+  }
+  return out;
+}
+function powerSmartSetCookie(req, res, id, maxAgeSeconds = Math.round(POWER_SMART_SESSION_MS / 1000)) {
+  const secure = String(req.headers["x-forwarded-proto"] || "").toLowerCase() === "https" || !String(req.headers.host || "").startsWith("localhost");
+  res.setHeader("Set-Cookie", `rf_ps=${encodeURIComponent(id)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.max(0, maxAgeSeconds)}${secure ? "; Secure" : ""}`);
+}
+function powerSmartSameOrigin(req) {
+  const origin = String(req.headers.origin || "").trim();
+  if (!origin) return true;
+  try { return new URL(origin).host === String(req.headers.host || ""); }
+  catch { return false; }
+}
+function powerSmartSession(req, { touch = true } = {}) {
+  const id = powerSmartCookieMap(req).rf_ps;
+  if (!id) return null;
+  const session = powerSmartSessions.get(id);
+  if (!session) return null;
+  const now = Date.now();
+  if (session.expiresAt <= now) {
+    powerSmartSessions.delete(id);
+    return null;
+  }
+  if (touch) session.expiresAt = now + POWER_SMART_SESSION_MS;
+  return session;
+}
+function powerSmartConsumeSignIn(req) {
+  const key = aiClientIp(req);
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const current = powerSmartSignInAttempts.get(key);
+  if (!current || now - current.startedAt >= windowMs) {
+    powerSmartSignInAttempts.set(key, { startedAt: now, count: 1 });
+    return { ok: true };
+  }
+  if (current.count >= 5) return { ok: false, retryAfterSeconds: Math.ceil((windowMs - (now - current.startedAt)) / 1000) };
+  current.count += 1;
+  return { ok: true };
+}
+function powerSmartApiRoot(payload) {
+  if (payload?.data && typeof payload.data === "object" && !Array.isArray(payload.data)) return { ...payload, ...payload.data };
+  return payload && typeof payload === "object" ? payload : {};
+}
+function powerSmartApiAccepted(payload) {
+  const root = powerSmartApiRoot(payload);
+  const status = String(root.status ?? root.statusCode ?? "").toLowerCase();
+  if (root.success === false || root.ok === false) return false;
+  if (["400", "401", "403", "404", "500", "false", "failed", "error"].includes(status)) return false;
+  return Boolean(root.token || root.accessToken || root.jwt || ["", "1", "200", "true", "success", "ok"].includes(status));
+}
+function powerSmartMeters(payload) {
+  const root = powerSmartApiRoot(payload);
+  const rows = root.tblRegisteredRefNo || root.registeredRefNo || root.meters || root.references || [];
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row, index) => {
+    const ref = powerSmartCleanRef(row?.refNo || row?.referenceNo || row?.reference_number || row?.refNum);
+    if (!ref) return null;
+    return {
+      id: `m${index + 1}`,
+      ref,
+      refMasked: powerSmartMaskRef(ref),
+      category: String(row?.connectionCategory || row?.category || "").slice(0, 80),
+      customerIdMasked: powerSmartMaskRef(row?.customerId || ""),
+      isDefault: [1, "1", true, "true"].includes(row?.defaultStatus)
+    };
+  }).filter(Boolean);
+}
+function powerSmartPublicMeters(session) {
+  return session.meters.map(({ id, refMasked, category, customerIdMasked, isDefault }) => ({ id, refMasked, category, customerIdMasked, isDefault }));
+}
+function powerSmartPublicState(session) {
+  if (!session) return {
+    ok: true, connected: false, source: "PITC Power Smart account API", sourceMode: "official-account",
+    instantMdmAvailable: false, sessionHours: POWER_SMART_SESSION_HOURS
+  };
+  const selected = session.meters.find((m) => m.id === session.selectedMeterId);
+  return {
+    ok: true,
+    connected: true,
+    accountName: session.accountName,
+    meters: powerSmartPublicMeters(session),
+    selectedMeterId: session.selectedMeterId,
+    selectedMeterRef: selected?.refMasked || "Meter",
+    selectedCategory: selected?.category || "",
+    source: "PITC Power Smart account API",
+    sourceMode: "official-account",
+    instantMdmAvailable: false,
+    lastFetchAt: session.lastFetchAt || null,
+    expiresAt: new Date(session.expiresAt).toISOString(),
+    sessionHours: POWER_SMART_SESSION_HOURS
+  };
+}
+async function powerSmartSignIn(email, cnic, password) {
+  const payload = await postJson(`${POWER_SMART_APP_BASE}/appUser/signin`, {
+    emailUserId: String(email || "").trim(), contactNo: "", cnic: powerSmartCleanRef(cnic), password: String(password || "")
+  });
+  const root = powerSmartApiRoot(payload);
+  if (!powerSmartApiAccepted(payload)) {
+    const error = new Error(String(root.message || root.error || "Power Smart sign-in failed.").slice(0, 240));
+    error.status = 401;
+    throw error;
+  }
+  const token = String(root.token || root.accessToken || root.jwt || "").trim();
+  if (!token) {
+    const error = new Error("Power Smart signed in but did not return an account token.");
+    error.status = 502;
+    throw error;
+  }
+  const meters = powerSmartMeters(payload);
+  if (!meters.length) {
+    const error = new Error("No registered meter was returned by this Power Smart account.");
+    error.status = 422;
+    throw error;
+  }
+  return { token, meters, accountName: String(root.appUserName || root.userName || root.name || "Power Smart User").slice(0, 100) };
+}
+async function powerSmartMonthlyRequest(session, ref) {
+  const url = `${POWER_SMART_APP_BASE}/getHistory/monthlyConsumption`;
+  const body = { refNo: ref };
+  try {
+    return await postJson(url, body, { headers: { Authorization: session.token } });
+  } catch (error) {
+    if (![401, 403].includes(Number(error.status)) || /^Bearer\s/i.test(session.token)) throw error;
+    return postJson(url, body, { headers: { Authorization: `Bearer ${session.token}` } });
+  }
+}
+async function powerSmartFetch(session, { force = false } = {}) {
+  if (!force && session.cache && Date.now() - session.lastFetchAt < POWER_SMART_CACHE_MS) return session.cache;
+  const meter = session.meters.find((m) => m.id === session.selectedMeterId);
+  if (!meter) throw Object.assign(new Error("Selected Power Smart meter is unavailable."), { status: 400 });
+  const payload = await powerSmartMonthlyRequest(session, meter.ref);
+  if (!powerSmartApiAccepted(payload)) {
+    const root = powerSmartApiRoot(payload);
+    throw Object.assign(new Error(String(root.message || root.error || "Power Smart monthly data request failed.").slice(0, 240)), { status: 502 });
+  }
+  const normalized = normalizePowerSmartMonthly(payload);
+  session.lastFetchAt = Date.now();
+  session.cache = {
+    ok: true,
+    connected: true,
+    meterRef: meter.refMasked,
+    category: meter.category,
+    accountName: session.accountName,
+    ...normalized,
+    source: "PITC Power Smart account API",
+    sourceMode: "official-account",
+    instantMdmAvailable: false,
+    refreshedAt: new Date().toISOString(),
+    refreshSeconds: Math.round(POWER_SMART_CACHE_MS / 1000),
+    note: "Official Power Smart account/billing data. It may update less frequently than the physical Tuya meter."
+  };
+  return session.cache;
 }
 async function getDashboardJson(base, path, user, password, options = {}) {
   if (!base) {
@@ -1893,6 +2108,73 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, stored, updatedAt: live.updatedAt, history: await historyStats() });
     }
     if (url.pathname === "/api/master/analytics") return json(res, 200, await fetchAnalytics());
+    if (url.pathname === "/api/master/powersmart/status") {
+      const session = powerSmartSession(req);
+      return json(res, 200, powerSmartPublicState(session));
+    }
+    if (url.pathname === "/api/master/powersmart/data") {
+      const session = powerSmartSession(req);
+      if (!session) return json(res, 401, { ok: false, connected: false, error: "Connect your Power Smart account first." });
+      return json(res, 200, await powerSmartFetch(session, { force: url.searchParams.get("fresh") === "1" }));
+    }
+    if (url.pathname === "/api/master/powersmart/connect") {
+      if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
+      if (!powerSmartSameOrigin(req)) return json(res, 403, { ok: false, error: "Invalid request origin." });
+      const rate = powerSmartConsumeSignIn(req);
+      if (!rate.ok) {
+        res.setHeader("Retry-After", String(rate.retryAfterSeconds));
+        return json(res, 429, { ok: false, error: "Too many sign-in attempts. Please wait before trying again." });
+      }
+      const body = await readJsonBody(req, 16_384);
+      const email = String(body?.email || "").trim().slice(0, 160);
+      const cnic = powerSmartCleanRef(body?.cnic);
+      const password = String(body?.password || "");
+      if (!email || !password) return json(res, 400, { ok: false, error: "Power Smart email and password are required." });
+      if (password.length > 256) return json(res, 400, { ok: false, error: "Invalid password length." });
+      const signedIn = await powerSmartSignIn(email, cnic, password);
+      const selected = signedIn.meters.find((m) => m.isDefault) || signedIn.meters[0];
+      const id = randomBytes(32).toString("base64url");
+      const session = {
+        token: signedIn.token,
+        accountName: signedIn.accountName,
+        meters: signedIn.meters,
+        selectedMeterId: selected.id,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + POWER_SMART_SESSION_MS,
+        lastFetchAt: 0,
+        cache: null
+      };
+      powerSmartSessions.set(id, session);
+      powerSmartSignInAttempts.delete(aiClientIp(req));
+      powerSmartSetCookie(req, res, id);
+      let data = null;
+      let dataError = null;
+      try { data = await powerSmartFetch(session, { force: true }); }
+      catch (error) { dataError = String(error.message || error).slice(0, 260); }
+      return json(res, 200, { ...powerSmartPublicState(session), data, dataError });
+    }
+    if (url.pathname === "/api/master/powersmart/select-meter") {
+      if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
+      if (!powerSmartSameOrigin(req)) return json(res, 403, { ok: false, error: "Invalid request origin." });
+      const session = powerSmartSession(req);
+      if (!session) return json(res, 401, { ok: false, connected: false, error: "Power Smart session expired. Sign in again." });
+      const body = await readJsonBody(req, 4096);
+      const meterId = String(body?.meterId || "").slice(0, 20);
+      if (!session.meters.some((m) => m.id === meterId)) return json(res, 400, { ok: false, error: "That meter is not registered on this account." });
+      session.selectedMeterId = meterId;
+      session.cache = null;
+      session.lastFetchAt = 0;
+      const data = await powerSmartFetch(session, { force: true });
+      return json(res, 200, { ...powerSmartPublicState(session), data });
+    }
+    if (url.pathname === "/api/master/powersmart/disconnect") {
+      if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
+      if (!powerSmartSameOrigin(req)) return json(res, 403, { ok: false, error: "Invalid request origin." });
+      const id = powerSmartCookieMap(req).rf_ps;
+      if (id) powerSmartSessions.delete(id);
+      powerSmartSetCookie(req, res, "", 0);
+      return json(res, 200, { ok: true, connected: false });
+    }
     if (url.pathname === "/api/master/ai/status") return json(res, 200, aiStatus());
     if (url.pathname === "/api/master/ai/chat") {
       if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
@@ -1959,12 +2241,13 @@ const server = http.createServer(async (req, res) => {
     }));
     if (url.pathname === "/api/health") return json(res, 200, {
       success: true,
-      service: "Raja Fraz Master Solar Command Center - V37 Logger Reassignment",
+      service: "Raja Fraz Master Solar Command Center - V38 Power Smart",
       pv14000: { base: PV14000_API_BASE || null, configured: Boolean(PV14000_API_BASE), state: PV14000_API_BASE ? "configured" : "waiting-for-new-wifi-logger", authConfigured: Boolean(PV14000_PASSWORD) },
       pv9000: { base: PV9000_API_BASE || null, configured: Boolean(PV9000_API_BASE), authConfigured: Boolean(PV9000_PASSWORD) },
       matrix: { base: MATRIX_API_BASE, configured: Boolean(MATRIX_API_BASE), role: "UPS", pvInstalledW: 0 },
       capacities: { pv14000PvW: PV14000_PV_INSTALLED_W, pv14000AcW: PV14000_AC_CAPACITY_W, pv9000PvW: PV9000_PV_INSTALLED_W, pv9000AcW: PV9000_AC_CAPACITY_W, matrixAcW: MATRIX_AC_CAPACITY_W, totalPvW: TOTAL_PV_INSTALLED_W, monitoredPvW: CURRENT_MONITORED_PV_W },
       topology: { pv9000FeedsMatrix: true, matrixIsUps: true, smartLoadSource: "PV9000", pv9000Strings: 1, pv9000Panels: 8, pv9000PanelWatts: 545, pv14000Telemetry: PV14000_API_BASE ? "configured" : "logger-pending", pv9000LoadIncludesUps: PV9000_LOAD_INCLUDES_UPS, pv9000LoadIncludesSmart: PV9000_LOAD_INCLUDES_SMART },
+      powerSmart: { configured: true, accountApi: POWER_SMART_APP_BASE, sessionHours: POWER_SMART_SESSION_HOURS, instantMdmEmbedded: false, mode: "owner-account-session" },
       intelligence: { nightImportLimitW: NIGHT_IMPORT_LIMIT_W, dayExportLimitW: DAY_EXPORT_LIMIT_W, dayModeStart: DAY_MODE_START, dayModeEnd: DAY_MODE_END, batteryCapacityKwh: BATTERY_CAPACITY_KWH || null, exportRatePkr: EXPORT_RATE },
       ai: { ...aiProviderState(), configured: Boolean(GEMINI_API_KEY || OPENAI_API_KEY), pinRequired: Boolean(AI_ACCESS_PIN), readOnly: true },
       notifications: await notificationStatus(),

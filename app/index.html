@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#082b43">
   <title>Raja Fraz Master Solar Command Center</title>
-  <link rel="stylesheet" href="styles.css?v=37">
+  <link rel="stylesheet" href="styles.css?v=38">
 </head>
 <body class="controlRoomActive">
   <svg class="iconSprite" aria-hidden="true" focusable="false">
@@ -50,6 +50,7 @@
       <button class="navtab" data-view="pv9000"><svg class="uiIcon icon-solar" aria-hidden="true"><use href="#i-sun"></use></svg><span>PV9000</span></button>
       <button class="navtab" data-view="matrix"><svg class="uiIcon icon-ups" aria-hidden="true"><use href="#i-ups"></use></svg><span>UPS Matrix</span></button>
       <button class="navtab" data-view="combined"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-bolt"></use></svg><span>Combined</span></button>
+      <button class="navtab powerSmartNav" data-view="powersmart"><svg class="uiIcon icon-meter" aria-hidden="true"><use href="#i-meter"></use></svg><span>Power Smart</span><em id="powerSmartNavState">NEW</em></button>
       <button class="navtab" data-view="flow"><svg class="uiIcon icon-grid" aria-hidden="true"><use href="#i-systems"></use></svg><span>Energy Flow</span></button>
       <button class="navtab" data-view="intelligence"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-target"></use></svg><span>Intelligence</span></button>
       <button class="navtab aiNav" data-view="ai"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-ai"></use></svg><span>AI Copilot</span></button>
@@ -61,6 +62,14 @@
       <button class="navtab" data-view="health"><svg class="uiIcon icon-health" aria-hidden="true"><use href="#i-health"></use></svg><span>Health</span> <b id="alertCount">0</b></button>
     </div>
     <div class="masterBrand"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-bolt"></use></svg><span>RAJA FRAZ MASTER</span></div>
+  </nav>
+
+  <nav class="mobileDock" aria-label="Primary mobile navigation">
+    <button class="active" data-mobile-view="command"><svg class="uiIcon"><use href="#i-dashboard"></use></svg><span>Home</span></button>
+    <button data-mobile-view="powersmart"><svg class="uiIcon"><use href="#i-meter"></use></svg><span>GEPCO</span></button>
+    <button data-mobile-view="flow"><svg class="uiIcon"><use href="#i-systems"></use></svg><span>Flow</span></button>
+    <button data-mobile-view="tools"><svg class="uiIcon"><use href="#i-tools"></use></svg><span>Tools</span></button>
+    <button data-mobile-view="notifications"><svg class="uiIcon"><use href="#i-bell"></use></svg><span>Alerts</span></button>
   </nav>
 
   <header class="siteHeader">
@@ -237,6 +246,65 @@
       <div class="pageShell"><div class="pageTitle"><div><div class="eyebrow">MASTER SITE • MONITORED VIEW</div><h2 class="titleWithIcon"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-systems"></use></svg><span>Combined Energy Center</span></h2><p>Live solar and inverter estimates come from PV9000 only. Physical PV remains 11.14 kWp; monitored PV is 4.36 kWp. Matrix stays downstream and is excluded from double counting.</p></div><span class="statusPill" id="combinedPageStatus">CHECKING</span></div><div id="combinedPage" class="systemDetailGrid"></div><article class="chartPanel fullChartPanel"><div class="chartHead"><div><span>MONITORED POWER</span><h3 class="titleWithIcon"><svg class="uiIcon icon-neutral" aria-hidden="true"><use href="#i-chart"></use></svg><span>PV9000 Solar • Site Demand • Utility Grid • Smart Load</span></h3></div></div><canvas id="combinedChart"></canvas></article></div>
     </section>
 
+    <section id="powersmart" class="view powerSmartView">
+      <div class="pageShell powerSmartShell">
+        <div class="pageTitle powerSmartTitle">
+          <div><div class="eyebrow">GEPCO • PITC POWER SMART</div><h2 class="titleWithIcon"><svg class="uiIcon icon-meter"><use href="#i-meter"></use></svg><span>Official Meter Account</span></h2><p>Secure read-only connection to your own Power Smart account. Credentials go directly through the Master server to PITC and are never saved in the browser or project files.</p></div>
+          <div class="powerSmartTitleState"><span id="powerSmartSourceBadge">OFFICIAL ACCOUNT API</span><b id="powerSmartStatus">NOT CONNECTED</b><small id="powerSmartFreshness">Sign in once per server session</small></div>
+        </div>
+
+        <div id="powerSmartLoginPanel" class="powerSmartConnectGrid">
+          <article class="powerSmartLoginCard">
+            <div class="powerSmartBrandMark"><svg class="uiIcon"><use href="#i-meter"></use></svg></div>
+            <div><span>SECURE ACCOUNT BRIDGE</span><h3>Connect Power Smart</h3><p>Use the same email and password as the official Power Smart app. Your password is used only for this sign-in request and is not retained.</p></div>
+            <form id="powerSmartLoginForm" autocomplete="on">
+              <label>Email address<input id="powerSmartEmail" name="username" type="email" autocomplete="username" inputmode="email" required placeholder="Power Smart email"></label>
+              <label>Password<input id="powerSmartPassword" name="password" type="password" autocomplete="current-password" required placeholder="Power Smart password"></label>
+              <label>CNIC <small>optional—only if your account requires it</small><input id="powerSmartCnic" name="cnic" type="text" autocomplete="off" inputmode="numeric" maxlength="13" placeholder="Optional 13 digits"></label>
+              <button id="powerSmartConnectButton" type="submit">Connect official account</button>
+            </form>
+            <div id="powerSmartLoginMessage" class="powerSmartMessage" hidden></div>
+          </article>
+          <aside class="powerSmartSecurityCard">
+            <span>PRIVACY & DATA MODE</span><h3>Owner-authorized and read-only</h3>
+            <ul><li>Password never written to disk or local storage.</li><li>Account token stays in server memory for up to 8 hours.</li><li>Registered meter numbers are masked in the browser.</li><li>No switching, tariff change or meter command is available.</li></ul>
+            <div><b>Instant readings</b><p>The public account API supplies official account/consumption records. Second-by-second MDM readings require separate PITC authorization and are not copied from the Android APK.</p></div>
+          </aside>
+        </div>
+
+        <div id="powerSmartConnectedPanel" hidden>
+          <div class="powerSmartKpis">
+            <article class="current"><span>CURRENT / LATEST UNITS</span><b id="powerSmartCurrentKwh">--</b><small id="powerSmartCurrentLabel">Waiting for PITC</small></article>
+            <article><span>OFFICIAL RECORDS</span><b id="powerSmartRecordCount">--</b><small>Monthly history returned</small></article>
+            <article><span>TUYA LIVE GRID</span><b id="powerSmartTuyaPower">--</b><small id="powerSmartTuyaMode">Independent physical meter</small></article>
+            <article><span>SESSION</span><b id="powerSmartSession">--</b><small>Server-memory only</small></article>
+          </div>
+
+          <div class="powerSmartBodyGrid">
+            <article class="powerSmartHistoryCard">
+              <div class="powerSmartCardHead"><div><span>OFFICIAL CONSUMPTION</span><h3>Monthly Power Smart history</h3></div><button id="powerSmartRefresh" type="button">Refresh</button></div>
+              <div id="powerSmartBars" class="powerSmartBars"><div class="powerSmartEmpty">Waiting for official consumption data…</div></div>
+              <div class="powerSmartLegend"><span><i></i>Power Smart kWh</span><small>Billing/account data can update more slowly than the live Tuya meter.</small></div>
+            </article>
+
+            <aside class="powerSmartAccountCard">
+              <span>CONNECTED ACCOUNT</span><h3 id="powerSmartAccountName">--</h3>
+              <dl><dt>Meter</dt><dd id="powerSmartMeterRef">--</dd><dt>Category</dt><dd id="powerSmartCategory">--</dd><dt>Last refresh</dt><dd id="powerSmartUpdated">--</dd><dt>Source</dt><dd>PITC account API</dd></dl>
+              <label>Registered meter<select id="powerSmartMeterSelect" aria-label="Registered Power Smart meter"></select></label>
+              <div class="powerSmartAccountActions"><button id="powerSmartReload" type="button">Reload data</button><button id="powerSmartDisconnect" class="danger" type="button">Disconnect</button></div>
+              <div id="powerSmartDataMessage" class="powerSmartMessage" hidden></div>
+            </aside>
+          </div>
+
+          <div class="powerSmartCompareGrid">
+            <article><span>POWER SMART</span><b>Official account consumption</b><small>Monthly / billing-oriented • owner login</small></article>
+            <article><span>TUYA PHYSICAL METER</span><b id="powerSmartTuyaDetail">Waiting for live meter</b><small>Fast local import/export reference</small></article>
+            <article><span>INVERTER ESTIMATE</span><b id="powerSmartInverterDetail">Waiting for PV9000</b><small>Used only when physical grid data is unavailable</small></article>
+          </div>
+        </div>
+      </div>
+    </section>
+
 
 
     <section id="flow" class="view">
@@ -385,7 +453,7 @@
         <div class="missionBackdrop"><i></i><i></i><i></i></div>
         <div class="missionTop">
           <div>
-            <div class="missionEyebrow"><span class="ultraLiveDot"></span> RAJA FRAZ • V37 PV9000 SINGLE-STRING CONTROL ROOM • LIVE OPERATIONS</div>
+            <div class="missionEyebrow"><span class="ultraLiveDot"></span> RAJA FRAZ • V38 POWER SMART CONTROL ROOM • LIVE OPERATIONS</div>
             <h2>Solar Estate Control Room</h2>
             <p>A widescreen operator cockpit for real-time power, asset health, grid guardrails, power quality and priority actions.</p>
           </div>
@@ -660,7 +728,7 @@
       <div class="toolsShell">
         <div class="toolsHero">
           <div class="toolsHeroCopy">
-            <div class="toolsKicker"><span></span>V37 OPERATOR TOOLKIT</div>
+            <div class="toolsKicker"><span></span>V38 OPERATOR TOOLKIT</div>
             <h2>Plan it before the grid feels it.</h2>
             <p>Live site data + practical calculators for smarter load timing, backup planning and cost decisions. Everything here is monitoring-only.</p>
             <div class="toolsHeroActions"><button id="toolCopySnapshot" type="button">Copy live summary</button><button id="toolDownloadJson" type="button" class="ghost">Download JSON</button><button id="toolDownloadCsv" type="button" class="ghost">Download CSV</button></div>
@@ -751,6 +819,6 @@
     </section>
   </main>
 
-  <script src="dashboard.js?v=37"></script>
+  <script src="dashboard.js?v=38"></script>
 </body>
 </html>
