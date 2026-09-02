@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#082b43">
   <title>Raja Fraz Master Solar Command Center</title>
-  <link rel="stylesheet" href="styles.css?v=38">
+  <link rel="stylesheet" href="styles.css?v=39">
 </head>
 <body class="controlRoomActive">
   <svg class="iconSprite" aria-hidden="true" focusable="false">
@@ -274,22 +274,34 @@
 
         <div id="powerSmartConnectedPanel" hidden>
           <div class="powerSmartKpis">
-            <article class="current"><span>CURRENT / LATEST UNITS</span><b id="powerSmartCurrentKwh">--</b><small id="powerSmartCurrentLabel">Waiting for PITC</small></article>
-            <article><span>OFFICIAL RECORDS</span><b id="powerSmartRecordCount">--</b><small>Monthly history returned</small></article>
+            <article class="current"><span id="powerSmartPrimaryKpiLabel">LATEST DAILY NET</span><b id="powerSmartCurrentKwh">--</b><small id="powerSmartCurrentLabel">Waiting for PITC</small></article>
+            <article><span>OFFICIAL RECORDS</span><b id="powerSmartRecordCount">--</b><small id="powerSmartRecordCaption">Daily history returned</small></article>
             <article><span>TUYA LIVE GRID</span><b id="powerSmartTuyaPower">--</b><small id="powerSmartTuyaMode">Independent physical meter</small></article>
             <article><span>SESSION</span><b id="powerSmartSession">--</b><small>Server-memory only</small></article>
           </div>
 
           <div class="powerSmartBodyGrid">
             <article class="powerSmartHistoryCard">
-              <div class="powerSmartCardHead"><div><span>OFFICIAL CONSUMPTION</span><h3>Monthly Power Smart history</h3></div><button id="powerSmartRefresh" type="button">Refresh</button></div>
-              <div id="powerSmartBars" class="powerSmartBars"><div class="powerSmartEmpty">Waiting for official consumption data…</div></div>
-              <div class="powerSmartLegend"><span><i></i>Power Smart kWh</span><small>Billing/account data can update more slowly than the live Tuya meter.</small></div>
+              <div class="powerSmartCardHead"><div><span>OFFICIAL CONSUMPTION</span><h3 id="powerSmartHistoryTitle">Daily Import / Export</h3></div><button id="powerSmartRefresh" type="button">Refresh</button></div>
+              <div class="powerSmartModeBar" role="tablist" aria-label="Power Smart history mode">
+                <button class="active" id="powerSmartDailyTab" type="button" role="tab" aria-selected="true" data-mode="daily">Daily</button>
+                <button id="powerSmartMonthlyTab" type="button" role="tab" aria-selected="false" data-mode="monthly">Monthly</button>
+                <label>Days<select id="powerSmartDayRange" aria-label="Number of daily records"><option value="7">7 days</option><option value="14">14 days</option><option value="30" selected>30 days</option></select></label>
+              </div>
+              <section id="powerSmartDailyPanel" class="powerSmartHistoryPanel" role="tabpanel" aria-labelledby="powerSmartDailyTab">
+                <div id="powerSmartDailyChart" class="powerSmartDailyChart"><div class="powerSmartEmpty">Waiting for official daily import/export data…</div></div>
+                <div class="powerSmartDailyLegend" aria-label="Daily chart legend"><span class="importOff">Import Off Peak</span><span class="importPeak">Import Peak</span><span class="exportOff">Export Off Peak</span><span class="exportPeak">Export Peak</span></div>
+                <div class="powerSmartDailyTableWrap"><table class="powerSmartDailyTable"><thead><tr><th rowspan="2">Date</th><th colspan="2">Import (kWh)</th><th colspan="2">Export (kWh)</th><th rowspan="2">Net</th></tr><tr><th>Peak</th><th>Off Peak</th><th>Peak</th><th>Off Peak</th></tr></thead><tbody id="powerSmartDailyRows"><tr><td colspan="6">Waiting for PITC</td></tr></tbody></table></div>
+              </section>
+              <section id="powerSmartMonthlyPanel" class="powerSmartHistoryPanel" role="tabpanel" aria-labelledby="powerSmartMonthlyTab" hidden>
+                <div id="powerSmartBars" class="powerSmartBars"><div class="powerSmartEmpty">Waiting for official monthly consumption data…</div></div>
+                <div class="powerSmartLegend"><span><i></i>Monthly consumption kWh</span><small>Billing records can update more slowly than daily meter records.</small></div>
+              </section>
             </article>
 
             <aside class="powerSmartAccountCard">
               <span>CONNECTED ACCOUNT</span><h3 id="powerSmartAccountName">--</h3>
-              <dl><dt>Meter</dt><dd id="powerSmartMeterRef">--</dd><dt>Category</dt><dd id="powerSmartCategory">--</dd><dt>Last refresh</dt><dd id="powerSmartUpdated">--</dd><dt>Source</dt><dd>PITC account API</dd></dl>
+              <dl><dt>Meter</dt><dd id="powerSmartMeterRef">--</dd><dt>Category</dt><dd id="powerSmartCategory">--</dd><dt>Last refresh</dt><dd id="powerSmartUpdated">--</dd><dt>Source</dt><dd id="powerSmartDataSource">PITC daily MDM</dd></dl>
               <label>Registered meter<select id="powerSmartMeterSelect" aria-label="Registered Power Smart meter"></select></label>
               <div class="powerSmartAccountActions"><button id="powerSmartReload" type="button">Reload data</button><button id="powerSmartDisconnect" class="danger" type="button">Disconnect</button></div>
               <div id="powerSmartDataMessage" class="powerSmartMessage" hidden></div>
@@ -297,7 +309,7 @@
           </div>
 
           <div class="powerSmartCompareGrid">
-            <article><span>POWER SMART</span><b>Official account consumption</b><small>Monthly / billing-oriented • owner login</small></article>
+            <article><span>POWER SMART</span><b id="powerSmartCompareTitle">Official daily import / export</b><small id="powerSmartCompareCaption">Peak and off-peak • registered account meter</small></article>
             <article><span>TUYA PHYSICAL METER</span><b id="powerSmartTuyaDetail">Waiting for live meter</b><small>Fast local import/export reference</small></article>
             <article><span>INVERTER ESTIMATE</span><b id="powerSmartInverterDetail">Waiting for PV9000</b><small>Used only when physical grid data is unavailable</small></article>
           </div>
@@ -453,7 +465,7 @@
         <div class="missionBackdrop"><i></i><i></i><i></i></div>
         <div class="missionTop">
           <div>
-            <div class="missionEyebrow"><span class="ultraLiveDot"></span> RAJA FRAZ • V38 POWER SMART CONTROL ROOM • LIVE OPERATIONS</div>
+            <div class="missionEyebrow"><span class="ultraLiveDot"></span> RAJA FRAZ • V39 DAILY POWER SMART • LIVE OPERATIONS</div>
             <h2>Solar Estate Control Room</h2>
             <p>A widescreen operator cockpit for real-time power, asset health, grid guardrails, power quality and priority actions.</p>
           </div>
@@ -728,7 +740,7 @@
       <div class="toolsShell">
         <div class="toolsHero">
           <div class="toolsHeroCopy">
-            <div class="toolsKicker"><span></span>V38 OPERATOR TOOLKIT</div>
+            <div class="toolsKicker"><span></span>V39 OPERATOR TOOLKIT</div>
             <h2>Plan it before the grid feels it.</h2>
             <p>Live site data + practical calculators for smarter load timing, backup planning and cost decisions. Everything here is monitoring-only.</p>
             <div class="toolsHeroActions"><button id="toolCopySnapshot" type="button">Copy live summary</button><button id="toolDownloadJson" type="button" class="ghost">Download JSON</button><button id="toolDownloadCsv" type="button" class="ghost">Download CSV</button></div>
@@ -819,6 +831,6 @@
     </section>
   </main>
 
-  <script src="dashboard.js?v=38"></script>
+  <script src="dashboard.js?v=39"></script>
 </body>
 </html>

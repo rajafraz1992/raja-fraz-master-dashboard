@@ -60,6 +60,8 @@ services:
         value: 8
       - key: POWER_SMART_CACHE_SECONDS
         value: 120
+      - key: POWER_SMART_MDM_PRIVATE_KEY
+        sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL

@@ -4,7 +4,7 @@ import { extname, join, resolve, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
-import { normalizePowerSmartMonthly } from "./lib/powersmart-normalize.mjs";
+import { normalizePowerSmartDaily, normalizePowerSmartMonthly } from "./lib/powersmart-normalize.mjs";
 import pg from "pg";
 import webpush from "web-push";
 
@@ -69,6 +69,9 @@ const HISTORY_SAMPLE_SECONDS = Math.max(30, Number(process.env.HISTORY_SAMPLE_SE
 // the owner's normal Power Smart account session. No shared or extracted MDM
 // service credential is embedded in this project.
 const POWER_SMART_APP_BASE = "https://api-powersmart.pitc.com.pk";
+const POWER_SMART_MDM_BASE = "https://api.mdm.pitc.com.pk";
+const POWER_SMART_MDM_PRIVATE_KEY = String(process.env.POWER_SMART_MDM_PRIVATE_KEY || "").trim();
+const POWER_SMART_MDM_KEY_HEADER = "privatekey";
 const POWER_SMART_SESSION_HOURS = Math.max(1, Math.min(24, Number(process.env.POWER_SMART_SESSION_HOURS || 8)));
 const POWER_SMART_SESSION_MS = POWER_SMART_SESSION_HOURS * 60 * 60 * 1000;
 const POWER_SMART_CACHE_MS = Math.max(30_000, Number(process.env.POWER_SMART_CACHE_SECONDS || 120) * 1000);
@@ -334,7 +337,7 @@ async function postJson(url, body, { timeoutMs = 18000, headers = {} } = {}) {
       method: "POST",
       signal: controller.signal,
       headers: {
-        "User-Agent": "Raja-Fraz-Master/38.0",
+        "User-Agent": "Raja-Fraz-Master/39.0",
         "Accept": "application/json",
         "Content-Type": "application/json",
         ...headers
@@ -449,7 +452,7 @@ function powerSmartPublicMeters(session) {
 function powerSmartPublicState(session) {
   if (!session) return {
     ok: true, connected: false, source: "PITC Power Smart account API", sourceMode: "official-account",
-    instantMdmAvailable: false, sessionHours: POWER_SMART_SESSION_HOURS
+    dailyMdmAvailable: Boolean(POWER_SMART_MDM_PRIVATE_KEY), instantMdmAvailable: false, sessionHours: POWER_SMART_SESSION_HOURS
   };
   const selected = session.meters.find((m) => m.id === session.selectedMeterId);
   return {
@@ -462,6 +465,7 @@ function powerSmartPublicState(session) {
     selectedCategory: selected?.category || "",
     source: "PITC Power Smart account API",
     sourceMode: "official-account",
+    dailyMdmAvailable: Boolean(POWER_SMART_MDM_PRIVATE_KEY),
     instantMdmAvailable: false,
     lastFetchAt: session.lastFetchAt || null,
     expiresAt: new Date(session.expiresAt).toISOString(),
@@ -502,6 +506,17 @@ async function powerSmartMonthlyRequest(session, ref) {
     return postJson(url, body, { headers: { Authorization: `Bearer ${session.token}` } });
   }
 }
+async function powerSmartDailyRequest(ref) {
+  if (!POWER_SMART_MDM_PRIVATE_KEY) {
+    const error = new Error("Official daily records need a dedicated PITC MDM authorization key. Monthly account records remain available.");
+    error.status = 503;
+    error.code = "POWER_SMART_DAILY_AUTH_REQUIRED";
+    throw error;
+  }
+  return postJson(`${POWER_SMART_MDM_BASE}/api/daily_read`, { reference_number: ref }, {
+    headers: { [POWER_SMART_MDM_KEY_HEADER]: POWER_SMART_MDM_PRIVATE_KEY }
+  });
+}
 async function powerSmartFetch(session, { force = false } = {}) {
   if (!force && session.cache && Date.now() - session.lastFetchAt < POWER_SMART_CACHE_MS) return session.cache;
   const meter = session.meters.find((m) => m.id === session.selectedMeterId);
@@ -528,6 +543,32 @@ async function powerSmartFetch(session, { force = false } = {}) {
     note: "Official Power Smart account/billing data. It may update less frequently than the physical Tuya meter."
   };
   return session.cache;
+}
+async function powerSmartFetchDaily(session, { force = false } = {}) {
+  if (!force && session.dailyCache && Date.now() - session.dailyLastFetchAt < POWER_SMART_CACHE_MS) return session.dailyCache;
+  const meter = session.meters.find((m) => m.id === session.selectedMeterId);
+  if (!meter) throw Object.assign(new Error("Selected Power Smart meter is unavailable."), { status: 400 });
+  const payload = await powerSmartDailyRequest(meter.ref);
+  if (!powerSmartApiAccepted(payload)) {
+    const root = powerSmartApiRoot(payload);
+    throw Object.assign(new Error(String(root.message || root.error || "Power Smart daily data request failed.").slice(0, 240)), { status: 502 });
+  }
+  const normalized = normalizePowerSmartDaily(payload);
+  session.dailyLastFetchAt = Date.now();
+  session.dailyCache = {
+    ok: true,
+    connected: true,
+    meterRef: meter.refMasked,
+    category: meter.category,
+    accountName: session.accountName,
+    ...normalized,
+    source: "PITC MDM official daily read",
+    sourceMode: "official-daily-mdm",
+    refreshedAt: new Date().toISOString(),
+    refreshSeconds: Math.round(POWER_SMART_CACHE_MS / 1000),
+    note: "Official day-wise import/export records. Peak and off-peak values are kept separate."
+  };
+  return session.dailyCache;
 }
 async function getDashboardJson(base, path, user, password, options = {}) {
   if (!base) {
@@ -2117,6 +2158,11 @@ const server = http.createServer(async (req, res) => {
       if (!session) return json(res, 401, { ok: false, connected: false, error: "Connect your Power Smart account first." });
       return json(res, 200, await powerSmartFetch(session, { force: url.searchParams.get("fresh") === "1" }));
     }
+    if (url.pathname === "/api/master/powersmart/daily") {
+      const session = powerSmartSession(req);
+      if (!session) return json(res, 401, { ok: false, connected: false, error: "Connect your Power Smart account first." });
+      return json(res, 200, await powerSmartFetchDaily(session, { force: url.searchParams.get("fresh") === "1" }));
+    }
     if (url.pathname === "/api/master/powersmart/connect") {
       if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
       if (!powerSmartSameOrigin(req)) return json(res, 403, { ok: false, error: "Invalid request origin." });
@@ -2142,7 +2188,9 @@ const server = http.createServer(async (req, res) => {
         createdAt: Date.now(),
         expiresAt: Date.now() + POWER_SMART_SESSION_MS,
         lastFetchAt: 0,
-        cache: null
+        cache: null,
+        dailyLastFetchAt: 0,
+        dailyCache: null
       };
       powerSmartSessions.set(id, session);
       powerSmartSignInAttempts.delete(aiClientIp(req));
@@ -2164,6 +2212,8 @@ const server = http.createServer(async (req, res) => {
       session.selectedMeterId = meterId;
       session.cache = null;
       session.lastFetchAt = 0;
+      session.dailyCache = null;
+      session.dailyLastFetchAt = 0;
       const data = await powerSmartFetch(session, { force: true });
       return json(res, 200, { ...powerSmartPublicState(session), data });
     }
@@ -2241,13 +2291,13 @@ const server = http.createServer(async (req, res) => {
     }));
     if (url.pathname === "/api/health") return json(res, 200, {
       success: true,
-      service: "Raja Fraz Master Solar Command Center - V38 Power Smart",
+      service: "Raja Fraz Master Solar Command Center - V39 Daily Power Smart",
       pv14000: { base: PV14000_API_BASE || null, configured: Boolean(PV14000_API_BASE), state: PV14000_API_BASE ? "configured" : "waiting-for-new-wifi-logger", authConfigured: Boolean(PV14000_PASSWORD) },
       pv9000: { base: PV9000_API_BASE || null, configured: Boolean(PV9000_API_BASE), authConfigured: Boolean(PV9000_PASSWORD) },
       matrix: { base: MATRIX_API_BASE, configured: Boolean(MATRIX_API_BASE), role: "UPS", pvInstalledW: 0 },
       capacities: { pv14000PvW: PV14000_PV_INSTALLED_W, pv14000AcW: PV14000_AC_CAPACITY_W, pv9000PvW: PV9000_PV_INSTALLED_W, pv9000AcW: PV9000_AC_CAPACITY_W, matrixAcW: MATRIX_AC_CAPACITY_W, totalPvW: TOTAL_PV_INSTALLED_W, monitoredPvW: CURRENT_MONITORED_PV_W },
       topology: { pv9000FeedsMatrix: true, matrixIsUps: true, smartLoadSource: "PV9000", pv9000Strings: 1, pv9000Panels: 8, pv9000PanelWatts: 545, pv14000Telemetry: PV14000_API_BASE ? "configured" : "logger-pending", pv9000LoadIncludesUps: PV9000_LOAD_INCLUDES_UPS, pv9000LoadIncludesSmart: PV9000_LOAD_INCLUDES_SMART },
-      powerSmart: { configured: true, accountApi: POWER_SMART_APP_BASE, sessionHours: POWER_SMART_SESSION_HOURS, instantMdmEmbedded: false, mode: "owner-account-session" },
+      powerSmart: { configured: true, accountApi: POWER_SMART_APP_BASE, dailyMdmAuthorized: Boolean(POWER_SMART_MDM_PRIVATE_KEY), sessionHours: POWER_SMART_SESSION_HOURS, instantMdmEmbedded: false, mode: "owner-account-session" },
       intelligence: { nightImportLimitW: NIGHT_IMPORT_LIMIT_W, dayExportLimitW: DAY_EXPORT_LIMIT_W, dayModeStart: DAY_MODE_START, dayModeEnd: DAY_MODE_END, batteryCapacityKwh: BATTERY_CAPACITY_KWH || null, exportRatePkr: EXPORT_RATE },
       ai: { ...aiProviderState(), configured: Boolean(GEMINI_API_KEY || OPENAI_API_KEY), pinRequired: Boolean(AI_ACCESS_PIN), readOnly: true },
       notifications: await notificationStatus(),

@@ -1,3 +1,20 @@
+# Raja Fraz Master Solar Dashboard - V39 DAILY POWER SMART
+
+V39 adds the official-app daily consumption layout while preserving the secure owner-account connection and monthly history.
+
+## V39 highlights
+
+- Daily opens by default; Monthly remains available as a separate tab.
+- Day-wise stacked chart keeps Import Peak, Import Off-Peak, Export Peak and Export Off-Peak separate.
+- Scrollable daily table includes each date, all four tariff values and net import/export.
+- 7, 14 and 30-day display ranges are included.
+- Samsung Galaxy S23 Ultra portrait layout uses compact controls, horizontal chart/table containment and no page-width overflow.
+- Daily records are requested only for a meter returned by the signed-in owner's Power Smart account.
+- `POWER_SMART_MDM_PRIVATE_KEY` accepts a dedicated PITC-issued MDM key. No extracted or shared application credential is included.
+- If PITC daily authorization is not configured, the dashboard clearly reports that limitation and keeps the official Monthly tab working.
+
+---
+
 # Raja Fraz Master Solar Dashboard - V38 POWER SMART + ANDROID
 
 V38 adds a secure, owner-authorized GEPCO/PITC Power Smart account view and a portrait-first Android application layout while preserving the V37 PV9000 logger mapping.

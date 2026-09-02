@@ -34,6 +34,9 @@ let toolsSeededFromLive = false;
 let toolHasSavedPrefs = false;
 let powerSmartState = { connected:false };
 let powerSmartData = null;
+let powerSmartDailyData = null;
+let powerSmartMode = 'daily';
+let powerSmartDayRange = 30;
 let powerSmartBusy = false;
 
 function set(id, value) { const el = $(id); if (el) el.textContent = value; }
@@ -402,7 +405,7 @@ function powerSmartMessage(id,text='',kind='error'){
 }
 function powerSmartSetBusy(busy,label='Connecting…'){
   powerSmartBusy=busy;const button=$('powerSmartConnectButton');if(button){button.disabled=busy;button.textContent=busy?label:'Connect official account';}
-  ['powerSmartRefresh','powerSmartReload','powerSmartDisconnect','powerSmartMeterSelect'].forEach(id=>{const el=$(id);if(el)el.disabled=busy;});
+  ['powerSmartRefresh','powerSmartReload','powerSmartDisconnect','powerSmartMeterSelect','powerSmartDailyTab','powerSmartMonthlyTab','powerSmartDayRange'].forEach(id=>{const el=$(id);if(el)el.disabled=busy;});
 }
 function powerSmartSessionText(expiresAt){
   if(!expiresAt)return'--';const ms=new Date(expiresAt).getTime()-Date.now();if(!Number.isFinite(ms)||ms<=0)return'EXPIRED';const hours=Math.floor(ms/3600000),minutes=Math.max(0,Math.floor(ms%3600000/60000));return hours?`${hours}h ${minutes}m`:`${minutes} min`;
@@ -419,10 +422,27 @@ function renderPowerSmartBars(rows=[]){
   const box=$('powerSmartBars');if(!box)return;box.replaceChildren();const usable=rows.filter(row=>Number.isFinite(Number(row.kwh))).slice(-12);if(!usable.length){const empty=document.createElement('div');empty.className='powerSmartEmpty';empty.textContent='PITC connected, but no monthly consumption rows were returned for this meter.';box.appendChild(empty);return;}
   const max=Math.max(1,...usable.map(row=>Number(row.kwh)));for(const row of usable){const bar=document.createElement('div');bar.className='powerSmartBar';const value=document.createElement('b');value.textContent=`${Number(row.kwh).toFixed(1)} kWh`;const column=document.createElement('i');column.style.setProperty('--bar-height',`${Math.max(4,Number(row.kwh)/max*100)}%`);const label=document.createElement('span');label.textContent=[row.label,row.year].filter(Boolean).join(' ');bar.append(value,column,label);box.appendChild(bar);}
 }
+function powerSmartFormatDailyValue(value){return Number(value||0).toFixed(Number(value||0)%1?2:0);}
+function renderPowerSmartDaily(rows=[]){
+  const chart=$('powerSmartDailyChart'),body=$('powerSmartDailyRows');if(!chart||!body)return;chart.replaceChildren();body.replaceChildren();
+  const usable=rows.filter(row=>row&&row.label).slice(-powerSmartDayRange);if(!usable.length){const empty=document.createElement('div');empty.className='powerSmartEmpty';empty.textContent=powerSmartState.dailyMdmAvailable?'PITC returned no daily records for this meter.':'Daily import/export is a separate PITC MDM feed and is not authorized on this server yet.';chart.appendChild(empty);const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=6;td.textContent=empty.textContent;tr.appendChild(td);body.appendChild(tr);return;}
+  const max=Math.max(1,...usable.flatMap(row=>[Number(row.importKwh)||0,Number(row.exportKwh)||0]));
+  for(const row of usable){const col=document.createElement('div');col.className='powerSmartDailyColumn';col.title=`${row.label} • Import ${Number(row.importKwh||0).toFixed(2)} kWh • Export ${Number(row.exportKwh||0).toFixed(2)} kWh`;
+    const positive=document.createElement('div');positive.className='powerSmartDailyHalf import';const ip=document.createElement('i');ip.className='importPeak';ip.style.height=`${Math.max(0,Number(row.importPeakKwh||0)/max*88)}%`;const io=document.createElement('i');io.className='importOff';io.style.height=`${Math.max(0,Number(row.importOffPeakKwh||0)/max*88)}%`;positive.append(io,ip);
+    const negative=document.createElement('div');negative.className='powerSmartDailyHalf export';const eo=document.createElement('i');eo.className='exportOff';eo.style.height=`${Math.max(0,Number(row.exportOffPeakKwh||0)/max*88)}%`;const ep=document.createElement('i');ep.className='exportPeak';ep.style.height=`${Math.max(0,Number(row.exportPeakKwh||0)/max*88)}%`;negative.append(eo,ep);
+    const label=document.createElement('span');label.textContent=row.label;col.append(positive,negative,label);chart.appendChild(col);}
+  for(const row of [...usable].reverse()){const tr=document.createElement('tr');const values=[row.label,powerSmartFormatDailyValue(row.importPeakKwh),powerSmartFormatDailyValue(row.importOffPeakKwh),powerSmartFormatDailyValue(row.exportPeakKwh),powerSmartFormatDailyValue(row.exportOffPeakKwh),`${Number(row.netKwh||0)>=0?'I':'E'} ${Math.abs(Number(row.netKwh||0)).toFixed(1)}`];for(const value of values){const td=document.createElement('td');td.textContent=value;tr.appendChild(td);}body.appendChild(tr);}
+}
+function setPowerSmartMode(mode){
+  powerSmartMode=mode==='monthly'?'monthly':'daily';const daily=powerSmartMode==='daily';$('powerSmartDailyPanel').hidden=!daily;$('powerSmartMonthlyPanel').hidden=daily;$('powerSmartDayRange').closest('label').hidden=!daily;
+  for(const id of ['powerSmartDailyTab','powerSmartMonthlyTab']){const button=$(id),active=button?.dataset.mode===powerSmartMode;button?.classList.toggle('active',active);button?.setAttribute('aria-selected',String(active));}
+  set('powerSmartHistoryTitle',daily?'Daily Import / Export':'Monthly Power Smart History');renderPowerSmartData();
+}
 function renderPowerSmartData(){
-  if(!powerSmartData){set('powerSmartCurrentKwh','--');set('powerSmartRecordCount','--');renderPowerSmartBars([]);return;}
-  const current=powerSmartData.current||powerSmartData.latest;set('powerSmartCurrentKwh',current?.kwh==null?'--':`${Number(current.kwh).toFixed(2)} kWh`);set('powerSmartCurrentLabel',current?.label||'Latest official record');set('powerSmartRecordCount',String(finite(powerSmartData.records)));set('powerSmartUpdated',powerSmartData.refreshedAt?new Date(powerSmartData.refreshedAt).toLocaleString('en-PK',{timeZone:'Asia/Karachi'}):'--');
-  renderPowerSmartBars(powerSmartData.history||[]);renderPowerSmartComparison();
+  const daily=powerSmartMode==='daily';renderPowerSmartBars(powerSmartData?.history||[]);renderPowerSmartDaily(powerSmartDailyData?.history||[]);
+  if(daily){const latest=powerSmartDailyData?.latest;const net=Number(latest?.netKwh||0);set('powerSmartPrimaryKpiLabel','LATEST DAILY NET');set('powerSmartCurrentKwh',latest?`${net>=0?'IMPORT':'EXPORT'} ${Math.abs(net).toFixed(2)} kWh`:'--');set('powerSmartCurrentLabel',latest?.label||'Official daily data unavailable');set('powerSmartRecordCount',String(powerSmartDailyData?.records??0));set('powerSmartRecordCaption','Daily records returned');set('powerSmartDataSource',powerSmartDailyData?.source||'PITC daily MDM');set('powerSmartCompareTitle','Official daily import / export');set('powerSmartCompareCaption','Peak and off-peak • registered account meter');}
+  else{const current=powerSmartData?.current||powerSmartData?.latest;set('powerSmartPrimaryKpiLabel','CURRENT / LATEST UNITS');set('powerSmartCurrentKwh',current?.kwh==null?'--':`${Number(current.kwh).toFixed(2)} kWh`);set('powerSmartCurrentLabel',current?.label||'Latest official record');set('powerSmartRecordCount',String(powerSmartData?.records??0));set('powerSmartRecordCaption','Monthly records returned');set('powerSmartDataSource','PITC account API');set('powerSmartCompareTitle','Official account consumption');set('powerSmartCompareCaption','Monthly / billing-oriented • owner login');}
+  const updated=daily?powerSmartDailyData?.refreshedAt:powerSmartData?.refreshedAt;set('powerSmartUpdated',updated?new Date(updated).toLocaleString('en-PK',{timeZone:'Asia/Karachi'}):'--');renderPowerSmartComparison();
 }
 function renderPowerSmartComparison(){
   const meter=live?.meter||null,c=live?.systems?.combined||{};const physical=meterSignedW(meter);set('powerSmartTuyaPower',physical==null?'OFFLINE':fmtGridSigned(physical));set('powerSmartTuyaMode',meter?.online?`${meter.mode||'LIVE'} • ${ageText(meter.updatedAt)}`:'Independent physical meter unavailable');set('powerSmartTuyaDetail',physical==null?'Tuya meter unavailable':`${fmtGridSigned(physical)} • ${finite(meter.voltage).toFixed(1)} V`);set('powerSmartInverterDetail',live?fmtGridSigned(finite(c.gridW)):'Waiting for PV9000');
@@ -432,24 +452,26 @@ async function loadPowerSmartStatus(){
 }
 async function loadPowerSmartData(force=false){
   if(!powerSmartState.connected||powerSmartBusy)return;powerSmartSetBusy(true,'Loading…');powerSmartMessage('powerSmartDataMessage','');
-  try{const response=await fetch(`/api/master/powersmart/data${force?'?fresh=1':''}`,{cache:'no-store',credentials:'same-origin'});const data=await response.json();if(!response.ok||!data.ok)throw Object.assign(new Error(data.error||'Power Smart data failed'),{status:response.status});powerSmartData=data;powerSmartState={...powerSmartState,lastFetchAt:Date.now()};renderPowerSmartState();renderPowerSmartData();powerSmartMessage('powerSmartDataMessage',force?'Official data refreshed.':'','ok');}
+  try{const suffix=force?'?fresh=1':'';const monthlyPromise=fetch(`/api/master/powersmart/data${suffix}`,{cache:'no-store',credentials:'same-origin'});const dailyPromise=powerSmartState.dailyMdmAvailable?fetch(`/api/master/powersmart/daily${suffix}`,{cache:'no-store',credentials:'same-origin'}):null;const monthlyResponse=await monthlyPromise;const monthly=await monthlyResponse.json();if(!monthlyResponse.ok||!monthly.ok)throw Object.assign(new Error(monthly.error||'Power Smart data failed'),{status:monthlyResponse.status});powerSmartData=monthly;
+    let dailyError='';if(dailyPromise){const dailyResponse=await dailyPromise;const dailyData=await dailyResponse.json();if(dailyResponse.ok&&dailyData.ok)powerSmartDailyData=dailyData;else dailyError=dailyData.error||'Official daily records are unavailable.';}else dailyError='Daily view is ready, but PITC MDM daily authorization is not configured on the server.';
+    powerSmartState={...powerSmartState,lastFetchAt:Date.now()};renderPowerSmartState();renderPowerSmartData();powerSmartMessage('powerSmartDataMessage',dailyError||(force?'Daily and monthly records refreshed.':''),dailyError?'error':'ok');}
   catch(error){if(error.status===401){powerSmartState={connected:false};powerSmartData=null;renderPowerSmartState();}else powerSmartMessage('powerSmartDataMessage',error.message);}
   finally{powerSmartSetBusy(false);}
 }
 async function connectPowerSmart(event){
   event?.preventDefault();if(powerSmartBusy)return;const email=$('powerSmartEmail')?.value.trim(),password=$('powerSmartPassword')?.value||'',cnic=$('powerSmartCnic')?.value.trim()||'';powerSmartMessage('powerSmartLoginMessage','');powerSmartSetBusy(true);
-  try{const response=await fetch('/api/master/powersmart/connect',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,cnic})});const data=await response.json();if(!response.ok||!data.connected)throw new Error(data.error||'Power Smart sign-in failed.');powerSmartState=data;powerSmartData=data.data||null;if($('powerSmartPassword'))$('powerSmartPassword').value='';renderPowerSmartState();renderPowerSmartData();if(data.dataError)powerSmartMessage('powerSmartDataMessage',`Account connected. Consumption feed: ${data.dataError}`);else powerSmartMessage('powerSmartDataMessage','Power Smart account connected securely.','ok');}
+  try{const response=await fetch('/api/master/powersmart/connect',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,cnic})});const data=await response.json();if(!response.ok||!data.connected)throw new Error(data.error||'Power Smart sign-in failed.');powerSmartState=data;powerSmartData=data.data||null;powerSmartDailyData=null;if($('powerSmartPassword'))$('powerSmartPassword').value='';renderPowerSmartState();renderPowerSmartData();setTimeout(()=>loadPowerSmartData(false),0);if(data.dataError)powerSmartMessage('powerSmartDataMessage',`Account connected. Consumption feed: ${data.dataError}`);}
   catch(error){if($('powerSmartPassword'))$('powerSmartPassword').value='';powerSmartMessage('powerSmartLoginMessage',error.message);}
   finally{powerSmartSetBusy(false);}
 }
 async function selectPowerSmartMeter(){
-  if(powerSmartBusy)return;const meterId=$('powerSmartMeterSelect')?.value;if(!meterId)return;powerSmartSetBusy(true,'Switching…');powerSmartMessage('powerSmartDataMessage','');try{const response=await fetch('/api/master/powersmart/select-meter',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({meterId})});const data=await response.json();if(!response.ok||!data.connected)throw new Error(data.error||'Meter switch failed.');powerSmartState=data;powerSmartData=data.data||null;renderPowerSmartState();renderPowerSmartData();}catch(error){powerSmartMessage('powerSmartDataMessage',error.message);}finally{powerSmartSetBusy(false);}
+  if(powerSmartBusy)return;const meterId=$('powerSmartMeterSelect')?.value;if(!meterId)return;powerSmartSetBusy(true,'Switching…');powerSmartMessage('powerSmartDataMessage','');try{const response=await fetch('/api/master/powersmart/select-meter',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({meterId})});const data=await response.json();if(!response.ok||!data.connected)throw new Error(data.error||'Meter switch failed.');powerSmartState=data;powerSmartData=data.data||null;powerSmartDailyData=null;renderPowerSmartState();renderPowerSmartData();}catch(error){powerSmartMessage('powerSmartDataMessage',error.message);}finally{powerSmartSetBusy(false);}await loadPowerSmartData(false);
 }
 async function disconnectPowerSmart(){
-  if(powerSmartBusy)return;powerSmartSetBusy(true,'Disconnecting…');try{await fetch('/api/master/powersmart/disconnect',{method:'POST',credentials:'same-origin'});}catch(_error){}powerSmartState={connected:false};powerSmartData=null;renderPowerSmartState();renderPowerSmartData();powerSmartSetBusy(false);
+  if(powerSmartBusy)return;powerSmartSetBusy(true,'Disconnecting…');try{await fetch('/api/master/powersmart/disconnect',{method:'POST',credentials:'same-origin'});}catch(_error){}powerSmartState={connected:false};powerSmartData=null;powerSmartDailyData=null;renderPowerSmartState();renderPowerSmartData();powerSmartSetBusy(false);
 }
 function initPowerSmart(){
-  $('powerSmartLoginForm')?.addEventListener('submit',connectPowerSmart);$('powerSmartRefresh')?.addEventListener('click',()=>loadPowerSmartData(true));$('powerSmartReload')?.addEventListener('click',()=>loadPowerSmartData(true));$('powerSmartDisconnect')?.addEventListener('click',disconnectPowerSmart);$('powerSmartMeterSelect')?.addEventListener('change',selectPowerSmartMeter);renderPowerSmartState();
+  $('powerSmartLoginForm')?.addEventListener('submit',connectPowerSmart);$('powerSmartRefresh')?.addEventListener('click',()=>loadPowerSmartData(true));$('powerSmartReload')?.addEventListener('click',()=>loadPowerSmartData(true));$('powerSmartDisconnect')?.addEventListener('click',disconnectPowerSmart);$('powerSmartMeterSelect')?.addEventListener('change',selectPowerSmartMeter);$$('.powerSmartModeBar button[data-mode]').forEach(button=>button.addEventListener('click',()=>setPowerSmartMode(button.dataset.mode)));$('powerSmartDayRange')?.addEventListener('change',event=>{powerSmartDayRange=Number(event.target.value)||30;renderPowerSmartData();});setPowerSmartMode('daily');renderPowerSmartState();
 }
 
 function render(){

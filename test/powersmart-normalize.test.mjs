@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { normalizePowerSmartMonthly } from "../lib/powersmart-normalize.mjs";
+import { normalizePowerSmartDaily, normalizePowerSmartMonthly } from "../lib/powersmart-normalize.mjs";
 
 test("normalizes, sorts and selects the current PITC month", () => {
   const result = normalizePowerSmartMonthly({
@@ -36,6 +36,42 @@ test("returns an empty safe shape when PITC has no monthly rows", () => {
   assert.deepEqual(normalizePowerSmartMonthly({ status: 200, data: { message: "No record" } }), { history: [], current: null, latest: null, records: 0 });
 });
 
+test("normalizes official daily import and export tariff units", () => {
+  const result = normalizePowerSmartDaily({ status: 1, data: [
+    { readingDate: "31-Aug-2026", imp_p_units: "6", imp_op_units: "25", exp_p_units: "0", exp_op_units: "12" },
+    { readingDate: "30-Aug-2026", imp_p_units: 0, imp_op_units: 25, exp_p_units: 0, exp_op_units: 14 }
+  ] });
+  assert.equal(result.records, 2);
+  assert.equal(result.latest.label, "31-Aug");
+  assert.equal(result.latest.importKwh, 31);
+  assert.equal(result.latest.exportKwh, 12);
+  assert.equal(result.latest.netKwh, 19);
+  assert.equal(result.totals.importKwh, 56);
+  assert.equal(result.totals.exportKwh, 26);
+});
+
+test("derives daily units from current and previous MDI readings", () => {
+  const result = normalizePowerSmartDaily({ result: [{
+    date: "2026-08-31",
+    mdiReadingImportPeakCurrent: 160,
+    previousPeakImport: 154,
+    mdiReadingImportOffPeakCurrent: 925,
+    previousOffPeakImport: 900,
+    mdiReadingExportOffPeakCurrent: 812,
+    previousOffPeakExport: 800
+  }] });
+  assert.equal(result.latest.importPeakKwh, 6);
+  assert.equal(result.latest.importOffPeakKwh, 25);
+  assert.equal(result.latest.exportOffPeakKwh, 12);
+});
+
+test("returns an empty safe daily shape when PITC has no rows", () => {
+  assert.deepEqual(normalizePowerSmartDaily({ status: 1, message: "No record" }), {
+    history: [], latest: null, records: 0,
+    totals: { importPeakKwh:0, importOffPeakKwh:0, exportPeakKwh:0, exportOffPeakKwh:0, importKwh:0, exportKwh:0, netKwh:0 }
+  });
+});
+
 test("Power Smart server contains no copied MDM service credential", async () => {
   const source = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
   for (const forbidden of ["authorization_service", "MDM_SERVICE_HEADERS", "admin@kbk", "admin786", "privatekey:"]) {
@@ -43,5 +79,6 @@ test("Power Smart server contains no copied MDM service credential", async () =>
   }
   assert.match(source, /HttpOnly; SameSite=Strict/);
   assert.match(source, /powerSmartConsumeSignIn/);
+  assert.match(source, /POWER_SMART_MDM_PRIVATE_KEY/);
   assert.equal(source.includes("session.password"), false);
 });
