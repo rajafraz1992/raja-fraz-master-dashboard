@@ -12,7 +12,7 @@ const __dirname = dirname(__filename);
 const APP_DIR = join(__dirname, "app");
 const PORT = Number(process.env.PORT || 10000);
 
-// V38.1 ACTIVE DUAL LOGGER
+// V38.2 PRO ACTIVE DUAL LOGGER
 // The Wi-Fi logger that was previously named PV14000 is now physically fitted
 // to PV9000. Existing Render variables keep working: PV14000_API_BASE / META_API_BASE
 // are treated as the reassigned PV9000 logger until a dedicated PV9000 URL is set.
@@ -30,7 +30,7 @@ const LEGACY_WIFI_PASSWORD = String(
 
 // SYSTEM 01 - PV14000 now has its own dedicated InverterZone Wi-Fi logger.
 // A separate upstream dashboard can still be used through PV14000_NEW_API_BASE,
-// but V38.1 can collect the official logger API directly when that URL is blank.
+// but V38.2 can collect the official logger API directly when that URL is blank.
 const PV14000_API_BASE = String(process.env.PV14000_NEW_API_BASE || "").replace(/\/$/, "");
 const PV14000_USER = String(process.env.PV14000_NEW_DASHBOARD_USER || LEGACY_WIFI_USER).trim() || "admin";
 const PV14000_PASSWORD = String(process.env.PV14000_NEW_DASHBOARD_PASSWORD || LEGACY_WIFI_PASSWORD);
@@ -424,6 +424,8 @@ function normalizeSolarInverter(payload, config) {
   const reportedGridA = first(s, ["gridCurrent", "gridA", "AC_in_Ampere"], NaN);
   const outputCurrentA = Number.isFinite(reportedOutputA) ? Math.abs(reportedOutputA) : Math.abs(load) / (outputV > 0 ? outputV : 230);
   const gridCurrentA = Number.isFinite(reportedGridA) ? Math.abs(reportedGridA) : Math.abs(grid) / (gridV > 0 ? gridV : 230);
+  const outputCurrentSource = Number.isFinite(reportedOutputA) ? "reported" : outputV > 0 ? "derived-live-voltage" : "derived-230v-nominal";
+  const gridCurrentSource = Number.isFinite(reportedGridA) ? "reported" : gridV > 0 ? "derived-live-voltage" : "derived-230v-nominal";
   const batteryPct = first(s, ["batteryPercentage", "battPercent", "batterySoc"], NaN);
   return {
     key: config.key,
@@ -444,9 +446,11 @@ function normalizeSolarInverter(payload, config) {
     loadW: load,
     outputV,
     outputCurrentA,
+    outputCurrentSource,
     gridW: grid,
     gridV,
     gridCurrentA,
+    gridCurrentSource,
     gridHz: first(s, ["gridHz", "gridFrequency"]),
     batteryPct: Number.isFinite(batteryPct) ? batteryPct : null,
     batteryW: first(s, ["batteryPowerWatts", "batteryW"], 0),
@@ -769,6 +773,8 @@ function combine(pv14000, pv9000, matrix) {
   const gridVoltage = gridVoltages.length ? gridVoltages.reduce((total, value) => total + value, 0) / gridVoltages.length : 0;
   const outputCurrentA = solarSum("outputCurrentA");
   const gridCurrentA = gridVoltage > 0 ? Math.abs(utilityGridW) / gridVoltage : solarSum("gridCurrentA");
+  const outputCurrentSource = solarSystems.every((item) => item.outputCurrentSource === "reported") ? "reported" : solarSystems.some((item) => item.outputCurrentSource === "derived-230v-nominal") ? "derived-230v-nominal" : "derived-live-voltage";
+  const gridCurrentSource = gridVoltage > 0 ? "derived-live-voltage" : solarSystems.some((item) => item.gridCurrentSource === "derived-230v-nominal") ? "derived-230v-nominal" : "reported";
   return {
     key: "combined",
     name: "Raja Fraz Solar Estate",
@@ -785,10 +791,12 @@ function combine(pv14000, pv9000, matrix) {
     siteUpstreamAcCapacityW: SITE_UPSTREAM_AC_CAPACITY_W,
     siteDemandW,
     outputCurrentA,
+    outputCurrentSource,
     utilityGridW,
     gridW: utilityGridW,
     gridVoltage,
     gridCurrentA,
+    gridCurrentSource,
     gridDirection: direction(utilityGridW),
     smartLoadW,
     upsLoadW: num(matrix?.loadW),
@@ -2074,7 +2082,7 @@ const server = http.createServer(async (req, res) => {
     }));
     if (url.pathname === "/api/health") return json(res, 200, {
       success: true,
-      service: "Raja Fraz Master Solar Command Center - V38.1 Active Dual Logger",
+      service: "Raja Fraz Master Solar Command Center - V38.2 Pro Dual Logger",
       pv14000: {
         base: PV14000_API_BASE || null,
         configured: PV14000_CONFIGURED,

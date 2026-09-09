@@ -61,6 +61,7 @@ function pvCurrentA(system){return finite(system?.pvCurrentA,finite(system?.pv1A
 function outputCurrentA(system){const volts=finite(system?.outputV,finite(system?.gridV));return finite(system?.outputCurrentA,Math.abs(finite(system?.loadW))/(volts>0?volts:230));}
 function gridCurrentA(system){const direct=Number(system?.gridCurrentA??system?.currentA);if(Number.isFinite(direct))return Math.abs(direct);const volts=finite(system?.gridV,finite(system?.voltage));const watts=finite(system?.gridW,Math.max(finite(system?.importW),finite(system?.exportW)));return Math.abs(watts)/(volts>0?volts:230);}
 function fmtCurrent(v){return `${finite(v).toFixed(1)} A`;}
+function fmtPowerCurrent(w,a){return `${fmtPower(w)} • ${fmtCurrent(a)}`;}
 function pv14000ConnectionState(a=live?.systems?.pv14000){
   if(a)return{online:true,pending:false,label:'ONLINE',detail:ageText(a.updatedAt),code:'live'};
   const code=String(live?.telemetryPlan?.pv14000||'temporarily-offline');
@@ -446,19 +447,19 @@ function renderPv14000(a){
   if(!a){
     const state=pv14000ConnectionState();
     set('pv14000SolarHero','OFFLINE');set('pv14000PvSplit','6.78 kWp array • dedicated logger temporarily unavailable');
-    set('pv14000LoadGaugeText','--');set('pv14000SolarGaugeText','--');set('pv14000GridGaugeText','--');set('pv14000GridMode',state.label);set('pv14000GridV','-- V • -- A');set('pv14000TodaySolar','--');set('pv14000Temp','--');set('pv14000Current','-- A');set('pv14000OutputCurrent','-- A');
+    set('pv14000LoadGaugeText','--');set('pv14000SolarGaugeText','--');set('pv14000GridGaugeText','--');set('pv14000GridMode',state.label);set('pv14000GridV','-- V • -- A');set('pv14000TodaySolar','--');set('pv14000Temp','--');set('pv14000Current','-- W • -- A');set('pv14000OutputCurrent','-- W • -- A');
     gauge('pv14000LoadGauge',0,10000);gauge('pv14000SolarGauge',0,6780);gauge('pv14000GridGauge',0,10000,'grid');return;
   }
   set('pv14000SolarHero',fmtPower(a.solarW)); set('pv14000PvSplit',`PV1 ${fmtPower(a.pv1W)} • PV2 ${fmtPower(a.pv2W)}`);
   set('pv14000LoadGaugeText',fmtPower(a.loadW)); set('pv14000SolarGaugeText',fmtPower(a.solarW)); set('pv14000GridGaugeText',fmtPower(a.gridW));
-  set('pv14000GridMode',gridMode(a.gridW)); set('pv14000GridV',finite(a.gridV)>0?`${finite(a.gridV).toFixed(1)} V • ${fmtCurrent(gridCurrentA(a))}`:`${fmtCurrent(gridCurrentA(a))} • 230 V nominal calc`); set('pv14000TodaySolar',fmtKwh(a.todaySolar)); set('pv14000Temp',`${Math.round(finite(a.temp))}°C`); set('pv14000Current',fmtCurrent(pvCurrentA(a))); set('pv14000OutputCurrent',fmtCurrent(outputCurrentA(a)));
+  set('pv14000GridMode',gridMode(a.gridW)); set('pv14000GridV',finite(a.gridV)>0?`${finite(a.gridV).toFixed(1)} V • ${fmtCurrent(gridCurrentA(a))}`:`${fmtCurrent(gridCurrentA(a))} • 230 V nominal calc`); set('pv14000TodaySolar',fmtKwh(a.todaySolar)); set('pv14000Temp',`${Math.round(finite(a.temp))}°C`); set('pv14000Current',fmtPowerCurrent(a.solarW,pvCurrentA(a))); set('pv14000OutputCurrent',fmtPowerCurrent(a.loadW,outputCurrentA(a)));
   gauge('pv14000LoadGauge',a.loadW,10000); gauge('pv14000SolarGauge',a.solarW,6780); gauge('pv14000GridGauge',a.gridW,10000,'grid');
 }
 function renderPv9000(b){
-  if(!b){blank(['pv9000SolarHero','pv9000PvSplit','pv9000LoadGaugeText','pv9000SolarGaugeText','pv9000GridGaugeText','pv9000GridMode','pv9000SmartGaugeText','pv9000TodaySolar','pv9000Temp']);set('pv9000GridV','-- V • -- A');set('pv9000Current','-- A');set('pv9000OutputCurrent','-- A');return;}
+  if(!b){blank(['pv9000SolarHero','pv9000PvSplit','pv9000LoadGaugeText','pv9000SolarGaugeText','pv9000GridGaugeText','pv9000GridMode','pv9000SmartGaugeText','pv9000TodaySolar','pv9000Temp']);set('pv9000GridV','-- V • -- A');set('pv9000Current','-- W • -- A');set('pv9000OutputCurrent','-- W • -- A');return;}
   set('pv9000SolarHero',fmtPower(b.solarW)); set('pv9000PvSplit',`STRING 1 ${fmtPower(b.pv1W)} • 8×545 W • STRING 2 NOT IN USE`);
   set('pv9000LoadGaugeText',fmtPower(b.loadW)); set('pv9000SolarGaugeText',fmtPower(b.solarW)); set('pv9000GridGaugeText',fmtPower(b.gridW)); set('pv9000SmartGaugeText',fmtPower(b.smartLoadW));
-  set('pv9000GridMode',gridMode(b.gridW)); set('pv9000GridV',finite(b.gridV)>0?`${finite(b.gridV).toFixed(1)} V • ${fmtCurrent(gridCurrentA(b))}`:`${fmtCurrent(gridCurrentA(b))} • 230 V nominal calc`); set('pv9000TodaySolar',fmtKwh(b.todaySolar)); set('pv9000Temp',`${Math.round(finite(b.temp))}°C`); set('pv9000Current',fmtCurrent(pvCurrentA(b))); set('pv9000OutputCurrent',fmtCurrent(outputCurrentA(b)));
+  set('pv9000GridMode',gridMode(b.gridW)); set('pv9000GridV',finite(b.gridV)>0?`${finite(b.gridV).toFixed(1)} V • ${fmtCurrent(gridCurrentA(b))}`:`${fmtCurrent(gridCurrentA(b))} • 230 V nominal calc`); set('pv9000TodaySolar',fmtKwh(b.todaySolar)); set('pv9000Temp',`${Math.round(finite(b.temp))}°C`); set('pv9000Current',fmtPowerCurrent(b.solarW,pvCurrentA(b))); set('pv9000OutputCurrent',fmtPowerCurrent(b.loadW,outputCurrentA(b)));
   gauge('pv9000LoadGauge',b.loadW,6000); gauge('pv9000SolarGauge',b.solarW,4360); gauge('pv9000GridGauge',b.gridW,6000,'grid'); gauge('pv9000SmartGauge',b.smartLoadW,6000);
 }
 function renderMatrix(u){
@@ -470,7 +471,7 @@ function renderMatrix(u){
 function renderTuya(m){
   const modeEl=$('tuyaMode');
   if(!m){
-    blank(['tuyaImportGaugeText','tuyaExportGaugeText','tuyaImportPercent','tuyaExportPercent','tuyaImportTotal','tuyaExportTotal','tuyaVoltage','tuyaCurrent','tuyaPf','tuyaTemp']);set('tuyaImportCurrent','-- A • FROM GRID');set('tuyaExportCurrent','-- A • TO GRID');
+    blank(['tuyaImportGaugeText','tuyaExportGaugeText','tuyaImportPercent','tuyaExportPercent','tuyaImportTotal','tuyaExportTotal','tuyaVoltage','tuyaCurrent','tuyaPf','tuyaTemp']);set('tuyaImportCurrent','-- W • -- A • FROM GRID');set('tuyaExportCurrent','-- W • -- A • TO GRID');
     $('tuyaImportPercent')?.classList.remove('over'); $('tuyaExportPercent')?.classList.remove('over');
     fixedGauge('tuyaImportGauge',0,5000,'red'); fixedGauge('tuyaExportGauge',0,6000,'green');
     set('tuyaMode','OFFLINE'); if(modeEl)modeEl.className='tuyaDirection idle'; return;
@@ -478,8 +479,8 @@ function renderTuya(m){
   const mode=String(m.mode||'IDLE').toUpperCase();
   set('tuyaImportGaugeText',fmtPower(m.importW)); set('tuyaExportGaugeText',fmtPower(m.exportW));
   const physicalCurrent=m.currentA==null?null:Math.abs(finite(m.currentA));
-  set('tuyaImportCurrent',`${mode==='IMPORTING'&&physicalCurrent!=null?physicalCurrent.toFixed(2):'0.00'} A • FROM GRID`);
-  set('tuyaExportCurrent',`${mode==='EXPORTING'&&physicalCurrent!=null?physicalCurrent.toFixed(2):'0.00'} A • TO GRID`);
+  set('tuyaImportCurrent',`${fmtPower(m.importW)} • ${mode==='IMPORTING'&&physicalCurrent!=null?physicalCurrent.toFixed(2):'0.00'} A • FROM GRID`);
+  set('tuyaExportCurrent',`${fmtPower(m.exportW)} • ${mode==='EXPORTING'&&physicalCurrent!=null?physicalCurrent.toFixed(2):'0.00'} A • TO GRID`);
   setLiveGaugePercent('tuyaImportPercent',m.importW,5000,'MDI'); setLiveGaugePercent('tuyaExportPercent',m.exportW,6000,'DG');
   set('tuyaImportTotal',m.importKwh==null?'-- kWh total':`${finite(m.importKwh).toFixed(2)} kWh total`);
   set('tuyaExportTotal',m.exportKwh==null?'-- kWh total':`${finite(m.exportKwh).toFixed(2)} kWh total`);
@@ -498,9 +499,9 @@ function renderCombined(c,a,b,u,m){
   const batteryMode=batteryGauge('combinedBatteryGauge',u?.batteryW,6000,u?.batteryMode);
   set('combinedBatteryGaugeText',u?fmtPower(u.batteryW):'--'); set('combinedBatteryMode',u?batteryMode:'--'); set('combinedBatteryVoltage',u?`${finite(u.batteryV).toFixed(1)} V`:'-- V');
   gauge('combinedSolarGauge',c.solarW,monitoredPvCapacityW()); gauge('combinedLoadGauge',c.siteDemandW,16000); gauge('combinedGridGauge',combinedGridW,16000,'grid');
-  set('combinedPvCurrent',fmtCurrent(pvCurrentA(a)+pvCurrentA(b)));
-  set('combinedOutputCurrent',fmtCurrent(finite(c.outputCurrentA,outputCurrentA(a)+outputCurrentA(b))));
-  set('combinedGridCurrent',`${fmtCurrent(combinedGridA)} • ${gridMode(combinedGridW)} • ${m?.online?'PHYSICAL':'INVERTER'}`);
+  set('combinedPvCurrent',fmtPowerCurrent(c.solarW,pvCurrentA(a)+pvCurrentA(b)));
+  set('combinedOutputCurrent',fmtPowerCurrent(c.siteDemandW,finite(c.outputCurrentA,outputCurrentA(a)+outputCurrentA(b))));
+  set('combinedGridCurrent',`${fmtPowerCurrent(combinedGridW,combinedGridA)} • ${gridMode(combinedGridW)} • ${m?.online?'PHYSICAL':'INVERTER'}`);
   set('masterHealth',[a,b,u].filter(Boolean).length===monitoredSystemTarget()?'Excellent · monitored':'Partial');
 }
 function renderQuickTotals(c){
@@ -877,7 +878,7 @@ function drawUltraPulse(){
   const canvas=$('ultraPulseChart');if(!canvas)return;const all=mergeHistory().slice(-180);const {ctx,w,h}=canvasSize(canvas);ctx.clearRect(0,0,w,h);const pad={l:6,r:6,t:10,b:12};ctx.strokeStyle='rgba(120,190,215,.10)';ctx.lineWidth=1;for(let i=0;i<4;i++){const yy=pad.t+i*(h-pad.t-pad.b)/3;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();}if(!all.length){ctx.fillStyle='#6f9eb3';ctx.font='11px Segoe UI';ctx.fillText('Collecting live history…',18,h/2);return;}const max=Math.max(1000,...all.flatMap(p=>[finite(p.solarW),finite(p.loadW),Math.abs(finite(p.gridW))]))*1.12;const x=i=>pad.l+(all.length<=1?0:i/(all.length-1))*(w-pad.l-pad.r);const y=v=>pad.t+(max-Math.abs(finite(v)))/max*(h-pad.t-pad.b);const series=[[COLORS.solar,'solarW'],[COLORS.load,'loadW'],['#3ce09b','gridW']];for(const [color,key] of series){ctx.beginPath();all.forEach((p,i)=>{const xx=x(i),yy=y(p[key]);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.strokeStyle=color;ctx.lineWidth=2;ctx.shadowColor=color;ctx.shadowBlur=6;ctx.stroke();ctx.shadowBlur=0;}}
 
 /* =========================================================
-   V38.1 DESKTOP CONTROL ROOM - active dual logger monitoring
+   V38.2 DESKTOP CONTROL ROOM - active dual logger monitoring
    ========================================================= */
 function openControlView(name){$('.navtab[data-view="'+name+'"]')?.click();window.scrollTo({top:0,behavior:'smooth'});}
 function setControlFocus(enabled){document.body.classList.toggle('controlFocusMode',Boolean(enabled));set('controlFocus',enabled?'◉ EXIT FOCUS':'◉ FOCUS');requestAnimationFrame(()=>{drawAll();drawUltraPulse();});}
@@ -922,20 +923,21 @@ function renderControlRoom(a,b,u,c={},m=null){
 }
 
 /* =========================================================
-   V35 OPERATOR TOOLKIT - planning, conversion and exports
+   V38.2 PRO OPERATOR SUITE - engineering, planning and exports
    ========================================================= */
 function toolValue(id,fallback=0){const el=$(id);return el?finite(el.value,fallback):fallback;}
 function toolSetInput(id,value){const el=$(id);if(el&&Number.isFinite(Number(value)))el.value=String(Number(value));}
 function toolProgress(id,value){const el=$(id);if(!el)return;const p=Math.max(0,finite(value));el.style.width=`${Math.min(100,p)}%`;el.classList.toggle('warn',p>=80&&p<100);el.classList.toggle('danger',p>=100);}
+function setProState(id,label,level='good'){const el=$(id);if(!el)return;el.textContent=label;el.classList.remove('good','warn','danger','offline');if(level)el.classList.add(level);}
 function saveToolPrefs(){
   try{
     const values=$$('[data-tools-persist]').map((el)=>el.type==='checkbox'?el.checked:el.value);
-    localStorage.setItem('rajaFrazOperatorToolsV35',JSON.stringify({values}));
+    localStorage.setItem('rajaFrazOperatorToolsV382',JSON.stringify({values}));
   }catch(_error){}
 }
 function restoreToolPrefs(){
   try{
-    const raw=localStorage.getItem('rajaFrazOperatorToolsV35');if(!raw)return;
+    const raw=localStorage.getItem('rajaFrazOperatorToolsV382');if(!raw)return;
     const data=JSON.parse(raw);if(!Array.isArray(data.values))return;toolHasSavedPrefs=true;
     $$('[data-tools-persist]').forEach((el,index)=>{const value=data.values[index];if(value==null)return;if(el.type==='checkbox')el.checked=Boolean(value);else el.value=String(value);});
   }catch(_error){}
@@ -957,20 +959,70 @@ function renderOperatorTools(){
     toolsSeededFromLive=true;
   }
 
-  set('toolLiveSolar',live?fmtPower(x.solar):'--');set('toolLiveSolarSub',`${Math.round(clamp(x.solar/monitoredPvCapacityW()*100))}% of ${monitoredSolarKwp().toFixed(2)} kWp monitored • 11.14 installed`);
-  set('toolLiveDemand',live?fmtPower(x.demand):'--');
-  set('toolLiveGrid',live?fmtGridSigned(x.grid):'--');set('toolLiveGridSub',x.m?.online?'Tuya physical meter':'Inverter estimate');
+  const combinedPvA=finite(x.c.pvCurrentA,pvCurrentA(x.a)+pvCurrentA(x.b));
+  const combinedOutputA=finite(x.c.outputCurrentA,outputCurrentA(x.a)+outputCurrentA(x.b));
+  const combinedGridA=x.m?.online?gridCurrentA(x.m):finite(x.c.gridCurrentA,gridCurrentA(x.a)+gridCurrentA(x.b));
+  set('toolLiveSolar',live?fmtPower(x.solar):'--');set('toolLiveSolarSub',live?`${fmtCurrent(combinedPvA)} • ${Math.round(clamp(x.solar/monitoredPvCapacityW()*100))}% of ${monitoredSolarKwp().toFixed(2)} kWp`:'-- kW • -- A');
+  set('toolLiveDemand',live?fmtPower(x.demand):'--');set('toolLiveDemandSub',live?`${fmtCurrent(combinedOutputA)} • upstream output`:'-- kW • -- A');
+  set('toolLiveGrid',live?fmtGridSigned(x.grid):'--');set('toolLiveGridSub',live?`${fmtCurrent(combinedGridA)} • ${x.m?.online?'Tuya physical meter':'inverter estimate'}`:'-- kW • -- A');
   set('toolLiveBattery',x.u?fmtPct(x.u.batteryPct):'--');set('toolLiveBatterySub',x.u?`${batteryFlowMode(x.u.batteryW,x.u.batteryMode)} • ${fmtPower(x.u.loadW)} load`:'Matrix unavailable');
+
+  const renderElectrical=(prefix,data)=>{
+    set(`toolElec${prefix}Pv`,data?fmtPowerCurrent(data.solarW,pvCurrentA(data)):'-- W • -- A');
+    set(`toolElec${prefix}Load`,data?fmtPowerCurrent(data.loadW,outputCurrentA(data)):'-- W • -- A');
+    set(`toolElec${prefix}Grid`,data?`${fmtPowerCurrent(data.gridW,gridCurrentA(data))} • ${gridMode(data.gridW)}`:'-- W • -- A');
+    setProState(`toolElec${prefix}State`,data?'ONLINE':'OFFLINE',data?'good':'offline');
+  };
+  renderElectrical('14000',x.a);renderElectrical('9000',x.b);
+  set('toolElecCombinedPv',live?fmtPowerCurrent(x.solar,combinedPvA):'-- W • -- A');
+  set('toolElecCombinedLoad',live?fmtPowerCurrent(x.demand,combinedOutputA):'-- W • -- A');
+  set('toolElecCombinedGrid',live?`${fmtPowerCurrent(x.grid,combinedGridA)} • ${gridMode(x.grid)}`:'-- W • -- A');
+  setProState('toolElecCombinedState',x.a&&x.b?'ALL LIVE':live?'PARTIAL':'OFFLINE',x.a&&x.b?'good':live?'warn':'offline');
+
+  const renderHeadroom=(prefix,data,loadW,loadA,capacityW)=>{
+    if(!data){set(`toolHead${prefix}`,'-- W • -- A');set(`toolHead${prefix}Sub`,'Telemetry unavailable');toolProgress(`toolHead${prefix}Bar`,0);return;}
+    const used=Math.max(0,finite(loadW)),amps=Math.max(0,finite(loadA)),remaining=capacityW-used,remainingA=capacityW/230-amps,pctUsed=used/capacityW*100;
+    set(`toolHead${prefix}`,remaining>=0?fmtPowerCurrent(remaining,Math.max(0,remainingA)):`OVER ${fmtPowerCurrent(-remaining,Math.max(0,-remainingA))}`);
+    set(`toolHead${prefix}Sub`,`${fmtPowerCurrent(used,amps)} in use • ${Math.round(pctUsed)}%`);
+    toolProgress(`toolHead${prefix}Bar`,pctUsed);
+  };
+  renderHeadroom('14000',x.a,x.a?.loadW,outputCurrentA(x.a),10000);
+  renderHeadroom('9000',x.b,x.b?.loadW,outputCurrentA(x.b),6000);
+  renderHeadroom('Matrix',x.u,x.u?.loadW,Math.abs(finite(x.u?.loadW))/230,6000);
+
+  if(x.a){
+    const p1=Math.abs(finite(x.a.pv1W)),p2=Math.abs(finite(x.a.pv2W)),both=p1>30&&p2>30,imbalance=both?Math.abs(p1-p2)/Math.max(p1,p2)*100:100;
+    set('toolMppt1',fmtPowerCurrent(p1,x.a.pv1A));set('toolMppt1Sub',`${finite(x.a.pv1V).toFixed(1)} V`);
+    set('toolMppt2',fmtPowerCurrent(p2,x.a.pv2A));set('toolMppt2Sub',`${finite(x.a.pv2V).toFixed(1)} V`);
+    set('toolMpptImbalance',both?`${imbalance.toFixed(1)}%`:'ONE INPUT IDLE');
+    const level=!both?'warn':imbalance<=15?'good':imbalance<=30?'warn':'danger';
+    setProState('toolMpptState',!both?'CHECK INPUTS':imbalance<=15?'BALANCED':imbalance<=30?'WATCH':'REVIEW',level);
+    set('toolMpptAdvice',!both?'One PV14000 input is not producing. Check daylight and string state.':imbalance<=15?'Both PV14000 MPPT inputs are producing within the normal comparison band.':`PV14000 string power differs by ${imbalance.toFixed(1)}%; compare shade, voltage and connections.`);
+    toolProgress('toolMpptBar',imbalance);const mpptBar=$('toolMpptBar');if(mpptBar){mpptBar.classList.toggle('warn',imbalance>15&&imbalance<=30);mpptBar.classList.toggle('danger',imbalance>30);}
+  }else{
+    set('toolMppt1','-- W • -- A');set('toolMppt1Sub','-- V');set('toolMppt2','-- W • -- A');set('toolMppt2Sub','-- V');set('toolMpptImbalance','--');set('toolMpptAdvice','PV14000 telemetry unavailable');toolProgress('toolMpptBar',0);setProState('toolMpptState','OFFLINE','offline');
+  }
+  set('toolPv9000String',x.b?fmtPowerCurrent(x.b.pv1W,x.b.pv1A):'-- W • -- A');
+
+  const gridVoltage=finite(x.m?.voltage)>0?finite(x.m.voltage):230,importUsed=Math.max(0,x.grid),exportUsed=Math.max(0,-x.grid),activeGridUsed=Math.max(importUsed,exportUsed),activeGridLimit=importUsed>0?5000:6000,gridPct=activeGridUsed/activeGridLimit*100;
+  set('toolGridGuardLive',live?`${fmtPowerCurrent(x.grid,combinedGridA)} • ${gridMode(x.grid)}`:'-- W • -- A');
+  set('toolGridGuardSource',`${x.m?.online?'TUYA PHYSICAL':'INVERTER ESTIMATE'} • ${gridVoltage.toFixed(1)} V basis`);
+  const importRoom=5000-importUsed,exportRoom=6000-exportUsed;
+  set('toolImportHeadroom',importRoom>=0?fmtPowerCurrent(importRoom,importRoom/gridVoltage):`OVER ${fmtPowerCurrent(-importRoom,-importRoom/gridVoltage)}`);
+  set('toolExportHeadroom',exportRoom>=0?fmtPowerCurrent(exportRoom,exportRoom/gridVoltage):`OVER ${fmtPowerCurrent(-exportRoom,-exportRoom/gridVoltage)}`);
+  const todayCombined=todayEnergy?.combined||{},todayImportKwh=finite(todayCombined.importKwh,finite(x.c.todayImport)),todayExportKwh=finite(todayCombined.exportKwh,finite(x.c.todayExport));
+  set('toolImportToday',`Today ${todayImportKwh.toFixed(2)} kWh`);set('toolExportToday',`Today ${todayExportKwh.toFixed(2)} kWh`);toolProgress('toolGridGuardBar',gridPct);
+  setProState('toolGridGuardState',gridPct>=100?'LIMIT EXCEEDED':gridPct>=80?'WATCH':activeGridUsed<30?'IDLE':'NORMAL',gridPct>=100?'danger':gridPct>=80?'warn':'good');
 
   const extraLoad=toolValue('toolExtraLoad'),extraSolar=toolValue('toolExtraSolar');const projectedGrid=x.grid+extraLoad-extraSolar;const projectedDemand=x.demand+extraLoad;const projectedSolar=x.solar+extraSolar;
   const isImport=projectedGrid>=0,limit=isImport?5000:6000,used=Math.abs(projectedGrid),headroom=limit-used;
-  set('toolProjectedGrid',live?fmtGridSigned(projectedGrid):'WAITING FOR LIVE');set('toolScenarioEquation',`${fmtGridSigned(x.grid)} + ${fmtPower(extraLoad)} load − ${fmtPower(extraSolar)} solar`);
-  set('toolProjectedDemand',fmtPower(projectedDemand));set('toolProjectedSolar',fmtPower(projectedSolar));set('toolProjectedHeadroom',headroom>=0?fmtPower(headroom):`OVER ${fmtPower(-headroom)}`);
+  set('toolProjectedGrid',live?`${fmtGridSigned(projectedGrid)} • ${fmtCurrent(Math.abs(projectedGrid)/230)}`:'WAITING FOR LIVE');set('toolScenarioEquation',`${fmtGridSigned(x.grid)} + ${fmtPower(extraLoad)} load − ${fmtPower(extraSolar)} solar`);
+  set('toolProjectedDemand',fmtPowerCurrent(projectedDemand,Math.abs(projectedDemand)/230));set('toolProjectedSolar',fmtPower(projectedSolar));set('toolProjectedHeadroom',headroom>=0?fmtPowerCurrent(headroom,headroom/230):`OVER ${fmtPowerCurrent(-headroom,-headroom/230)}`);
   set('toolScenarioGuard',`${isImport?'Night import':'Day export'} guard • ${Math.round(used/limit*100)}% of ${fmtPower(limit)}`);toolProgress('toolScenarioBar',used/limit*100);
   const projected=$('toolProjectedGrid');if(projected){projected.classList.toggle('importing',isImport&&used>=30);projected.classList.toggle('exporting',!isImport&&used>=30);projected.classList.toggle('over',used>limit);}
 
   let plannedLoad=0;$$('[data-tool-load]').forEach((row)=>{const on=row.querySelector('[data-load-on]')?.checked;const qty=finite(row.querySelector('[data-load-qty]')?.value,1);const watts=finite(row.querySelector('[data-load-watts]')?.value);const subtotal=on?qty*watts:0;plannedLoad+=subtotal;row.classList.toggle('selected',Boolean(on));row.dataset.subtotal=String(subtotal);});
-  set('toolLoadTotal',fmtPower(plannedLoad));
+  set('toolLoadTotal',fmtPowerCurrent(plannedLoad,plannedLoad/230));
   [['toolCap14000','toolCap14000Text',10000],['toolCap9000','toolCap9000Text',6000],['toolCapMatrix','toolCapMatrixText',6000]].forEach(([bar,textId,capacity])=>{const p=plannedLoad/capacity*100;toolProgress(bar,p);set(textId,`${Math.round(p)}%`);});
   const loadAdvice=plannedLoad>10000?'Stack exceeds every inverter rating — split or sequence these loads.':plannedLoad>6000?'Fits PV14000 rating only; above PV9000 and Matrix 6 kW ratings.':plannedLoad>4800?'High on both 6 kW systems; allow motor/compressor surge margin.':plannedLoad>0?'Comfortable planning range; confirm starting surge before switching.':'Select loads to build a switching plan.';set('toolLoadAdvice',loadAdvice);
 
@@ -980,11 +1032,21 @@ function renderOperatorTools(){
   const dailySolar=toolValue('toolDailySolar',30),selfUse=clamp(toolValue('toolSelfUse',70)),importTariff=toolValue('toolImportTariff',65),exportTariff=toolValue('toolExportTariff',27),days=Math.max(1,toolValue('toolSavingsDays',30));const selfKwh=dailySolar*selfUse/100*days,exportKwh=dailySolar*(1-selfUse/100)*days;const selfValue=selfKwh*importTariff,exportValue=exportKwh*exportTariff;
   set('toolSavingsValue',fmtPkr(selfValue+exportValue));set('toolSavingsSplit',`${selfKwh.toFixed(1)} kWh self-use + ${exportKwh.toFixed(1)} kWh export over ${Math.round(days)} days`);
 
+  const todaySolarKwh=finite(todayCombined.solarKwh,finite(x.c.todaySolar)),todayLoadKwh=finite(todayCombined.loadKwh,finite(x.c.todayLoad)),todayImportCost=todayImportKwh*importTariff,todayExportCredit=todayExportKwh*exportTariff,todaySelfUseKwh=Math.max(0,todaySolarKwh-todayExportKwh),todaySolarValue=todaySelfUseKwh*importTariff+todayExportCredit,todayGridNet=todayExportCredit-todayImportCost;
+  set('toolDailyNet',`${todayGridNet>=0?'+':'−'}${fmtPkr(Math.abs(todayGridNet))}`);set('toolDailyNetState',todayGridNet>=0?'NET EXPORT CREDIT':'NET IMPORT COST');
+  set('toolDailyImportCost',`${fmtPkr(todayImportCost)} • ${todayImportKwh.toFixed(2)} kWh`);set('toolDailyExportCredit',`${fmtPkr(todayExportCredit)} • ${todayExportKwh.toFixed(2)} kWh`);set('toolDailySolarValue',`${fmtPkr(todaySolarValue)} • ${todaySolarKwh.toFixed(2)} kWh`);set('toolDailyEnergyBalance',`Solar ${todaySolarKwh.toFixed(2)} • Load ${todayLoadKwh.toFixed(2)} kWh`);
+  const dailyNet=$('toolDailyNet');if(dailyNet){dailyNet.classList.toggle('positive',todayGridNet>=0);dailyNet.classList.toggle('negative',todayGridNet<0);}
+
   const watts=toolValue('toolConvertWatts',5000),volts=Math.max(1,toolValue('toolConvertVolts',230)),phase=toolValue('toolConvertPhase',1),pf=clamp(toolValue('toolConvertPf',1),.1,1);const amps=phase===3?watts/(Math.sqrt(3)*volts*pf):watts/(volts*pf);const energyKwh=toolValue('toolConvertKwh',10),tariff=toolValue('toolConvertTariff',65);
   set('toolConvertAmps',`${amps.toFixed(2)} A`);set('toolConvertCost',fmtPkr(energyKwh*tariff));
 
+  const circuitW=Math.max(0,toolValue('toolCircuitWatts',3000)),circuitV=Math.max(1,toolValue('toolCircuitVolts',230)),circuitPhase=toolValue('toolCircuitPhase',1),circuitPf=clamp(toolValue('toolCircuitPf',.9),.1,1),circuitMargin=clamp(toolValue('toolCircuitMargin',25),0,100);
+  const circuitA=circuitPhase===3?circuitW/(Math.sqrt(3)*circuitV*circuitPf):circuitW/(circuitV*circuitPf),designA=circuitA*(1+circuitMargin/100),breakerRatings=[6,10,16,20,25,32,40,50,63,80,100,125],breaker=breakerRatings.find((rating)=>rating>=designA);
+  set('toolCircuitRunning',`${circuitA.toFixed(2)} A`);set('toolCircuitDesign',`${designA.toFixed(2)} A`);set('toolCircuitBreaker',breaker?`${breaker} A`:'>125 A');
+
   const sourceTarget=monitoredSourceTarget();const sourceCount=[...(x.a?[x.a]:[]),x.b,x.u,x.m?.online?x.m:null].filter(Boolean).length;const recon=x.physical==null?null:Math.abs(x.physical-finite(x.c.gridW));const balance=x.physical==null?null:x.solar+x.physical-x.demand;const attention=sourceCount<sourceTarget||(recon!=null&&recon>500)||(balance!=null&&Math.abs(balance)>750);
-  set('toolDiagSources',`${sourceCount}/${sourceTarget} monitored available`);set('toolDiagGrid',x.m?.online?'TUYA PHYSICAL':'INVERTER ESTIMATE');set('toolDiagRecon',recon==null?'Unknown':fmtPower(recon));set('toolDiagBalance',balance==null?'Unknown':fmtSignedPower(balance));set('toolDiagState',attention?'REVIEW':'NOMINAL');
+  const sourceAges=[x.a?.updatedAt,x.b?.updatedAt,x.u?.updatedAt,x.m?.online?x.m.updatedAt:null].filter(Boolean).map((ts)=>Math.max(0,Date.now()-finite(ts))),oldestAge=sourceAges.length?Math.round(Math.max(...sourceAges)/1000):null,currentSources=[x.a?.outputCurrentSource,x.b?.outputCurrentSource].filter(Boolean),currentBasis=currentSources.length&&currentSources.every((v)=>v==='reported')?'DIRECT API':currentSources.includes('derived-230v-nominal')?'LIVE W ÷ 230 V':currentSources.length?'LIVE W ÷ VOLTS':'UNAVAILABLE';
+  set('toolDiagSources',`${sourceCount}/${sourceTarget} monitored available`);set('toolDiagFreshness',oldestAge==null?'Unknown':`${oldestAge}s • ${oldestAge<=15?'fresh':oldestAge<=60?'watch':'stale'}`);set('toolDiagGrid',x.m?.online?'TUYA PHYSICAL':'INVERTER ESTIMATE');set('toolDiagCurrentBasis',currentBasis);set('toolDiagRecon',recon==null?'Unknown':fmtPower(recon));set('toolDiagBalance',balance==null?'Unknown':fmtSignedPower(balance));set('toolDiagState',attention?'REVIEW':'NOMINAL');
   const state=$('toolDiagState');if(state){state.classList.toggle('warn',attention);state.classList.toggle('good',!attention);}
 }
 function operatorSnapshot(){

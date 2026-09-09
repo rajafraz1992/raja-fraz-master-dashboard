@@ -33,6 +33,8 @@ test("normalizes the dedicated PV14000 logger without collapsing its two MPPT in
   assert.equal(reading.pvCurrentA, 19);
   assert.ok(Math.abs(reading.outputCurrentA - (2100 / 229.7)) < 0.01);
   assert.ok(Math.abs(reading.gridCurrentA - (4600 / 229.7)) < 0.01);
+  assert.equal(reading.outputCurrentSource, "derived-live-voltage");
+  assert.equal(reading.gridCurrentSource, "derived-live-voltage");
   assert.equal(reading.fan, 44);
 });
 
@@ -44,6 +46,8 @@ test("derives output and grid amperes at nominal voltage when the logger omits v
   const reading = normalizePv14000({ dataDTO: { solarW: 1200, acOutW: 920, gridW: -460 } });
   assert.equal(reading.outputCurrentA, 4);
   assert.equal(reading.gridCurrentA, 2);
+  assert.equal(reading.outputCurrentSource, "derived-230v-nominal");
+  assert.equal(reading.gridCurrentSource, "derived-230v-nominal");
 });
 
 test("normalizes official InverterZone energy totals", () => {
@@ -67,4 +71,10 @@ test("ships an upload-ready Render mapping for the PV14000 logger", async () => 
   assert.match(html, /id="combinedPvCurrent"/);
   assert.match(html, /id="combinedOutputCurrent"/);
   assert.match(html, /id="combinedGridCurrent"/);
+  assert.match(html, /id="toolElec14000Pv"/);
+  assert.match(html, /id="toolHead14000"/);
+  assert.match(html, /id="toolMpptState"/);
+  assert.match(html, /id="toolGridGuardLive"/);
+  assert.match(html, /id="toolDailyNet"/);
+  assert.match(html, /id="toolCircuitRunning"/);
 });

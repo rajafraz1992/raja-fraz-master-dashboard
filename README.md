@@ -1,8 +1,8 @@
-# Raja Fraz Master Solar Dashboard - V38.1 ACTIVE DUAL LOGGER
+# Raja Fraz Master Solar Dashboard - V38.2 PRO DUAL LOGGER
 
-V38.1 confirms the dedicated PV14000 WiFi logger as commissioned and live while preserving the existing PV9000 logger and all topology safeguards.
+V38.2 keeps both dedicated inverter loggers live and adds dual-unit W/kW + A monitoring plus a professional engineering toolkit.
 
-## V38.1 live topology
+## V38.2 live topology and pro tools
 
 - **PV14000:** 10 kW AC, 6.78 kWp PV, dedicated logger active (device ending `B1AF`).
 - **PV9000:** 6 kW AC, one active string, `8 × 545 W = 4,360 W` (4.36 kWp), existing reassigned logger.
@@ -11,10 +11,12 @@ V38.1 confirms the dedicated PV14000 WiFi logger as commissioned and live while 
 - PV14000 keeps both MPPT/string readings; PV9000 remains normalized to its single physical string.
 - Live telemetry refreshes every **5 seconds**.
 - The main Dashboard shows PV input current, AC output/load current and grid import/export current for each inverter plus combined current totals.
+- W/kW readings remain visible beside amperes throughout the Dashboard, Energy Flow, Control Room, Tools, exports and reports.
+- Pro Tools adds a live electrical board, inverter headroom, PV14000 MPPT balance, PV9000 string supervision, MDI/export guard, daily energy economics and circuit-current planning.
 - Matrix remains the downstream PV-less UPS supplied from PV9000; its internal AC transfer is not counted as utility-grid import.
 - PostgreSQL stores PV14000 history samples automatically.
 
-## Render variables for V38.1
+## Render variables for V38.2
 
 `render.yaml` includes the dedicated `PV14000_DEVICE_ID` mapping and the existing PV9000 upstream URL. The Master server calls the official InverterZone logger API directly, so a second PV14000 dashboard service is not required.
 

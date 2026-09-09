@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#082b43">
   <title>Raja Fraz Master Solar Command Center</title>
-  <link rel="stylesheet" href="styles.css?v=381">
+  <link rel="stylesheet" href="styles.css?v=382">
 </head>
 <body class="controlRoomActive">
   <svg class="iconSprite" aria-hidden="true" focusable="false">
@@ -110,7 +110,7 @@
             <div class="gaugeCard"><h3 class="metricTitle"><svg class="uiIcon icon-solar" aria-hidden="true"><use href="#i-sun"></use></svg><span>Solar</span></h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="pv14000SolarGauge" class="gValue amber" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="pv14000SolarGaugeText">--</b><small><span>0 W</span><span>6.78 kWp</span></small></div>
             <div class="gaugeCard wide"><h3 class="metricTitle"><svg class="uiIcon icon-grid" aria-hidden="true"><use href="#i-grid"></use></svg><span>Utility Grid</span></h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="pv14000GridGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="pv14000GridGaugeText">--</b><small><span id="pv14000GridMode">--</span><span id="pv14000GridV">-- V</span></small></div>
           </div>
-          <div class="miniStrip"><div><span>Today solar</span><b id="pv14000TodaySolar">--</b></div><div><span>Temperature</span><b id="pv14000Temp">--</b></div><div><span>PV current</span><b id="pv14000Current">-- A</b></div><div><span>Output load current</span><b id="pv14000OutputCurrent">-- A</b></div></div>
+          <div class="miniStrip"><div><span>Today solar</span><b id="pv14000TodaySolar">--</b></div><div><span>Temperature</span><b id="pv14000Temp">--</b></div><div><span>PV input • W + A</span><b id="pv14000Current">-- W • -- A</b></div><div><span>Output load • W + A</span><b id="pv14000OutputCurrent">-- W • -- A</b></div></div>
         </article>
 
         <article class="combinedPanel masterFocus">
@@ -125,7 +125,7 @@
             <div class="gaugeCard masterGauge"><h3 class="metricTitle"><svg class="uiIcon icon-grid" aria-hidden="true"><use href="#i-grid"></use></svg><span>Utility Grid</span></h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedGridGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedGridGaugeText">--</b><small><span id="combinedGridMode">--</span><span id="combinedGridCurrentGauge">-- A</span></small></div>
             <div class="gaugeCard masterGauge"><h3 class="metricTitle"><svg class="uiIcon icon-battery" aria-hidden="true"><use href="#i-battery"></use></svg><span>Battery</span></h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="combinedBatteryGauge" class="gValue green" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="combinedBatteryGaugeText">--</b><small><span id="combinedBatteryMode">--</span><span id="combinedBatteryVoltage">-- V</span></small></div>
           </div>
-          <div class="flowSummary"><div><span>COMBINED PV CURRENT</span><b id="combinedPvCurrent">-- A</b></div><div><span>OUTPUT LOAD CURRENT</span><b id="combinedOutputCurrent">-- A</b></div><div><span>GRID IMPORT / EXPORT</span><b id="combinedGridCurrent">-- A</b></div><div><span>MONITORED HEALTH</span><b id="masterHealth">--</b></div></div>
+          <div class="flowSummary"><div><span>COMBINED PV • W + A</span><b id="combinedPvCurrent">-- W • -- A</b></div><div><span>OUTPUT LOAD • W + A</span><b id="combinedOutputCurrent">-- W • -- A</b></div><div><span>GRID IMPORT / EXPORT • W + A</span><b id="combinedGridCurrent">-- W • -- A</b></div><div><span>MONITORED HEALTH</span><b id="masterHealth">--</b></div></div>
         </article>
 
         <article class="systemPanel pv9000Panel">
@@ -138,7 +138,7 @@
             <div class="gaugeCard"><h3 class="metricTitle"><svg class="uiIcon icon-grid" aria-hidden="true"><use href="#i-grid"></use></svg><span>Utility Grid</span></h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="pv9000GridGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="pv9000GridGaugeText">--</b><small><span id="pv9000GridMode">--</span><span id="pv9000GridV">-- V</span></small></div>
             <div class="gaugeCard"><h3 class="metricTitle"><svg class="uiIcon icon-smart" aria-hidden="true"><use href="#i-smart"></use></svg><span>Smart Load</span></h3><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="pv9000SmartGauge" class="gValue orange" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="pv9000SmartGaugeText">--</b><small><span>Direct output</span><span>6 kW</span></small></div>
           </div>
-          <div class="miniStrip"><div><span>Today solar</span><b id="pv9000TodaySolar">--</b></div><div><span>Temperature</span><b id="pv9000Temp">--</b></div><div><span>PV current</span><b id="pv9000Current">-- A</b></div><div><span>Output load current</span><b id="pv9000OutputCurrent">-- A</b></div></div>
+          <div class="miniStrip"><div><span>Today solar</span><b id="pv9000TodaySolar">--</b></div><div><span>Temperature</span><b id="pv9000Temp">--</b></div><div><span>PV input • W + A</span><b id="pv9000Current">-- W • -- A</b></div><div><span>Output load • W + A</span><b id="pv9000OutputCurrent">-- W • -- A</b></div></div>
         </article>
       </div>
 
@@ -148,8 +148,8 @@
           <div class="tuyaHeaderStatus"><small id="tuyaFresh">Waiting for meter</small><b id="tuyaOnline" class="state">CHECKING</b><span id="tuyaMode" class="tuyaDirection idle">IDLE</span></div>
         </div>
         <div class="tuyaBody">
-          <div class="tuyaGauge importGauge"><h3 class="metricTitle"><svg class="uiIcon icon-import" aria-hidden="true"><use href="#i-import"></use></svg><span>Grid Import <small>• 5 kW MDI</small></span></h3><span id="tuyaImportPercent" class="tuyaGaugePercent">--% MDI</span><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="tuyaImportGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="tuyaImportGaugeText">--</b><small><span id="tuyaImportCurrent">-- A • FROM GRID</span><span id="tuyaImportTotal">-- kWh total</span></small></div>
-          <div class="tuyaGauge exportGauge"><h3 class="metricTitle"><svg class="uiIcon icon-export" aria-hidden="true"><use href="#i-export"></use></svg><span>Grid Export <small>• 6 kW DG</small></span></h3><span id="tuyaExportPercent" class="tuyaGaugePercent">--% DG</span><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="tuyaExportGauge" class="gValue green" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="tuyaExportGaugeText">--</b><small><span id="tuyaExportCurrent">-- A • TO GRID</span><span id="tuyaExportTotal">-- kWh total</span></small></div>
+          <div class="tuyaGauge importGauge"><h3 class="metricTitle"><svg class="uiIcon icon-import" aria-hidden="true"><use href="#i-import"></use></svg><span>Grid Import <small>• 5 kW MDI</small></span></h3><span id="tuyaImportPercent" class="tuyaGaugePercent">--% MDI</span><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="tuyaImportGauge" class="gValue red" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="tuyaImportGaugeText">--</b><small><span id="tuyaImportCurrent">-- W • -- A • FROM GRID</span><span id="tuyaImportTotal">-- kWh total</span></small></div>
+          <div class="tuyaGauge exportGauge"><h3 class="metricTitle"><svg class="uiIcon icon-export" aria-hidden="true"><use href="#i-export"></use></svg><span>Grid Export <small>• 6 kW DG</small></span></h3><span id="tuyaExportPercent" class="tuyaGaugePercent">--% DG</span><svg viewBox="0 0 220 130"><path class="gTrack" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/><path id="tuyaExportGauge" class="gValue green" pathLength="100" d="M18 110 A92 92 0 0 1 202 110"/></svg><b id="tuyaExportGaugeText">--</b><small><span id="tuyaExportCurrent">-- W • -- A • TO GRID</span><span id="tuyaExportTotal">-- kWh total</span></small></div>
           <div class="tuyaStats">
             <div><span class="iconLabel icon-grid"><svg class="uiIcon icon-grid" aria-hidden="true"><use href="#i-bolt"></use></svg><span>Grid Voltage</span></span><b id="tuyaVoltage">-- V</b></div>
             <div><span class="iconLabel icon-current"><svg class="uiIcon icon-current" aria-hidden="true"><use href="#i-current"></use></svg><span>Current</span></span><b id="tuyaCurrent">-- A</b></div>
@@ -384,7 +384,7 @@
         <div class="missionBackdrop"><i></i><i></i><i></i></div>
         <div class="missionTop">
           <div>
-            <div class="missionEyebrow"><span class="ultraLiveDot"></span> RAJA FRAZ • V38.1 ACTIVE DUAL-LOGGER • LIVE OPERATIONS</div>
+            <div class="missionEyebrow"><span class="ultraLiveDot"></span> RAJA FRAZ • V38.2 PRO DUAL-LOGGER • LIVE OPERATIONS</div>
             <h2>Solar Estate Control Room</h2>
             <p>A widescreen operator cockpit for real-time power, asset health, grid guardrails, power quality and priority actions.</p>
           </div>
@@ -659,15 +659,15 @@
       <div class="toolsShell">
         <div class="toolsHero">
           <div class="toolsHeroCopy">
-            <div class="toolsKicker"><span></span>V38.1 OPERATOR TOOLKIT</div>
-            <h2>Plan it before the grid feels it.</h2>
-            <p>Live site data + practical calculators for smarter load timing, backup planning and cost decisions. Everything here is monitoring-only.</p>
+            <div class="toolsKicker"><span></span>V38.2 PRO OPERATOR TOOLKIT</div>
+            <h2>Live operations, engineering and energy decisions.</h2>
+            <p>Professional monitoring tools with live W/kW + A readings, electrical diagnostics, operating headroom, MPPT balance, grid guardrails and daily economics. Everything remains monitoring-only.</p>
             <div class="toolsHeroActions"><button id="toolCopySnapshot" type="button">Copy live summary</button><button id="toolDownloadJson" type="button" class="ghost">Download JSON</button><button id="toolDownloadCsv" type="button" class="ghost">Download CSV</button></div>
           </div>
           <div class="toolsLiveMatrix">
-            <div class="solar"><span>LIVE MONITORED SOLAR</span><b id="toolLiveSolar">--</b><small id="toolLiveSolarSub">PV9000 4.36 kWp</small></div>
-            <div class="load"><span>SITE DEMAND</span><b id="toolLiveDemand">--</b><small>Upstream demand</small></div>
-            <div class="grid"><span>PHYSICAL GRID</span><b id="toolLiveGrid">--</b><small id="toolLiveGridSub">Waiting for Tuya</small></div>
+            <div class="solar"><span>LIVE MONITORED SOLAR</span><b id="toolLiveSolar">--</b><small id="toolLiveSolarSub">-- kW • -- A</small></div>
+            <div class="load"><span>SITE DEMAND</span><b id="toolLiveDemand">--</b><small id="toolLiveDemandSub">-- kW • -- A</small></div>
+            <div class="grid"><span>PHYSICAL GRID</span><b id="toolLiveGrid">--</b><small id="toolLiveGridSub">-- kW • -- A</small></div>
             <div class="battery"><span>UPS RESERVE</span><b id="toolLiveBattery">--</b><small id="toolLiveBatterySub">Matrix UPS</small></div>
           </div>
         </div>
@@ -708,6 +708,50 @@
             </div>
           </article>
 
+          <article class="toolCard electricalTool toolWide">
+            <div class="toolCardHead"><div class="toolIcon electrical">A</div><div><span>LIVE ELECTRICAL BOARD</span><h3>Power + Current by System</h3><p>Every primary flow keeps W/kW and amperes together, refreshed from live telemetry.</p></div><b class="liveToolBadge">5 SEC LIVE</b></div>
+            <div class="electricalTable">
+              <div class="electricalRow electricalHeader"><div>SYSTEM</div><div>PV INPUT</div><div>OUTPUT LOAD</div><div>GRID IMPORT / EXPORT</div><div>STATE</div></div>
+              <div class="electricalRow"><div class="electricalAsset"><i>14</i><span><b>PV14000</b><small>10 kW • dual MPPT</small></span></div><div><span>PV INPUT</span><b id="toolElec14000Pv">-- W • -- A</b></div><div><span>OUTPUT LOAD</span><b id="toolElec14000Load">-- W • -- A</b></div><div><span>GRID</span><b id="toolElec14000Grid">-- W • -- A</b></div><div><b id="toolElec14000State" class="proState">CHECKING</b></div></div>
+              <div class="electricalRow"><div class="electricalAsset"><i>9</i><span><b>PV9000</b><small>6 kW • one active string</small></span></div><div><span>PV INPUT</span><b id="toolElec9000Pv">-- W • -- A</b></div><div><span>OUTPUT LOAD</span><b id="toolElec9000Load">-- W • -- A</b></div><div><span>GRID</span><b id="toolElec9000Grid">-- W • -- A</b></div><div><b id="toolElec9000State" class="proState">CHECKING</b></div></div>
+              <div class="electricalRow combinedElectrical"><div class="electricalAsset"><i>Σ</i><span><b>COMBINED SITE</b><small>11.14 kWp monitored</small></span></div><div><span>TOTAL PV</span><b id="toolElecCombinedPv">-- W • -- A</b></div><div><span>TOTAL OUTPUT</span><b id="toolElecCombinedLoad">-- W • -- A</b></div><div><span>PHYSICAL / ESTIMATE</span><b id="toolElecCombinedGrid">-- W • -- A</b></div><div><b id="toolElecCombinedState" class="proState">CHECKING</b></div></div>
+            </div>
+          </article>
+
+          <article class="toolCard headroomTool">
+            <div class="toolCardHead"><div class="toolIcon headroom">↟</div><div><span>CAPACITY ENGINEER</span><h3>Live Inverter Headroom</h3><p>Available output capacity before each equipment rating.</p></div></div>
+            <div class="proBars">
+              <div><span>PV14000 • 10 kW</span><b id="toolHead14000">--</b><small id="toolHead14000Sub">Waiting for live output</small><div><i id="toolHead14000Bar"></i></div></div>
+              <div><span>PV9000 • 6 kW</span><b id="toolHead9000">--</b><small id="toolHead9000Sub">Waiting for live output</small><div><i id="toolHead9000Bar"></i></div></div>
+              <div><span>Matrix UPS • 6 kW</span><b id="toolHeadMatrix">--</b><small id="toolHeadMatrixSub">Waiting for live output</small><div><i id="toolHeadMatrixBar"></i></div></div>
+            </div>
+          </article>
+
+          <article class="toolCard mpptTool">
+            <div class="toolCardHead"><div class="toolIcon mppt">☀</div><div><span>PV ENGINEER</span><h3>MPPT & String Balance</h3><p>Compares PV14000 strings and supervises the PV9000 single-string rule.</p></div><b id="toolMpptState" class="liveToolBadge">CHECKING</b></div>
+            <div class="mpptGrid"><div><span>PV14000 • MPPT 1</span><b id="toolMppt1">--</b><small id="toolMppt1Sub">-- V</small></div><div><span>PV14000 • MPPT 2</span><b id="toolMppt2">--</b><small id="toolMppt2Sub">-- V</small></div></div>
+            <div class="mpptBalance"><span>STRING POWER IMBALANCE</span><b id="toolMpptImbalance">--</b><div class="toolProgress"><i id="toolMpptBar"></i></div><small id="toolMpptAdvice">Waiting for both MPPT inputs</small></div>
+            <div class="singleStringCheck"><span>PV9000 STRING 1</span><b id="toolPv9000String">--</b><small>String 2 remains NOT IN USE</small></div>
+          </article>
+
+          <article class="toolCard gridGuardTool">
+            <div class="toolCardHead"><div class="toolIcon gridguard">↕</div><div><span>GRID ENGINEER</span><h3>MDI & Export Guard</h3><p>Physical Tuya reading when available, otherwise inverter estimate.</p></div><b id="toolGridGuardState" class="liveToolBadge">CHECKING</b></div>
+            <div class="guardLive"><span>LIVE GRID</span><b id="toolGridGuardLive">-- W • -- A</b><small id="toolGridGuardSource">Checking direction source</small><div class="toolProgress"><i id="toolGridGuardBar"></i></div></div>
+            <div class="guardSplit"><div><span>5 kW IMPORT HEADROOM</span><b id="toolImportHeadroom">--</b><small id="toolImportToday">Today -- kWh</small></div><div><span>6 kW EXPORT HEADROOM</span><b id="toolExportHeadroom">--</b><small id="toolExportToday">Today -- kWh</small></div></div>
+          </article>
+
+          <article class="toolCard economicsTool">
+            <div class="toolCardHead"><div class="toolIcon economics">₨</div><div><span>DAILY COMMERCIAL</span><h3>Live Energy Economics</h3><p>Today's import cost, export credit and solar value from live totals.</p></div></div>
+            <div class="toolResult moneyResult"><span>NET GRID POSITION TODAY</span><b id="toolDailyNet">--</b><small id="toolDailyNetState">Waiting for daily energy totals</small></div>
+            <div class="diagnosticList economicsList"><div><span>Import cost</span><b id="toolDailyImportCost">--</b></div><div><span>Export credit</span><b id="toolDailyExportCredit">--</b></div><div><span>Solar value</span><b id="toolDailySolarValue">--</b></div><div><span>Energy balance</span><b id="toolDailyEnergyBalance">--</b></div></div>
+          </article>
+
+          <article class="toolCard circuitTool">
+            <div class="toolCardHead"><div class="toolIcon circuit">⏚</div><div><span>ELECTRICAL PLANNER</span><h3>Circuit Current & Breaker</h3><p>Planning calculation for running current and design margin.</p></div></div>
+            <div class="toolForm twoCol"><label>Circuit load <small>watts</small><input id="toolCircuitWatts" data-tools-persist type="number" min="1" max="100000" step="100" value="3000"></label><label>Voltage <small>volts</small><input id="toolCircuitVolts" data-tools-persist type="number" min="1" max="1000" step="1" value="230"></label><label>Supply<select id="toolCircuitPhase" data-tools-persist><option value="1">Single phase</option><option value="3">Three phase</option></select></label><label>Power factor<input id="toolCircuitPf" data-tools-persist type="number" min="0.1" max="1" step="0.01" value="0.9"></label><label>Design margin <small>%</small><input id="toolCircuitMargin" data-tools-persist type="number" min="0" max="100" step="5" value="25"></label></div>
+            <div class="circuitResults"><div><span>RUNNING</span><b id="toolCircuitRunning">-- A</b></div><div><span>DESIGN</span><b id="toolCircuitDesign">-- A</b></div><div><span>NEXT STANDARD</span><b id="toolCircuitBreaker">-- A</b></div></div><small class="circuitNote">Planning aid only—final cable, breaker curve and protection must be verified by a qualified electrician.</small>
+          </article>
+
           <article class="toolCard batteryTool">
             <div class="toolCardHead"><div class="toolIcon battery">▰</div><div><span>BACKUP PLANNER</span><h3>Battery Runtime</h3></div></div>
             <div class="toolForm twoCol"><label>Battery capacity <small>kWh</small><input id="toolBatteryKwh" data-tools-persist type="number" min="0.1" max="200" step="0.1" value="5"></label><label>Current SOC <small>%</small><input id="toolBatterySoc" data-tools-persist type="number" min="0" max="100" step="1" value="80"></label><label>UPS efficiency <small>%</small><input id="toolBatteryEff" data-tools-persist type="number" min="10" max="100" step="1" value="90"></label><label>Backup load <small>watts</small><input id="toolBatteryLoad" data-tools-persist type="number" min="1" max="30000" step="50" value="1000"></label></div>
@@ -728,7 +772,7 @@
 
           <article class="toolCard diagnosticTool">
             <div class="toolCardHead"><div class="toolIcon diagnostic">✓</div><div><span>QUICK CHECK</span><h3>Live Diagnostics</h3></div><b id="toolDiagState" class="liveToolBadge">CHECKING</b></div>
-            <div class="diagnosticList"><div><span>Telemetry sources</span><b id="toolDiagSources">--</b></div><div><span>Grid reference</span><b id="toolDiagGrid">--</b></div><div><span>Meter ↔ inverter</span><b id="toolDiagRecon">--</b></div><div><span>Power balance</span><b id="toolDiagBalance">--</b></div></div>
+            <div class="diagnosticList"><div><span>Telemetry sources</span><b id="toolDiagSources">--</b></div><div><span>Oldest source age</span><b id="toolDiagFreshness">--</b></div><div><span>Grid reference</span><b id="toolDiagGrid">--</b></div><div><span>Current calculation</span><b id="toolDiagCurrentBasis">--</b></div><div><span>Meter ↔ inverter</span><b id="toolDiagRecon">--</b></div><div><span>Power balance</span><b id="toolDiagBalance">--</b></div><div><span>Live refresh</span><b>Every 5 seconds</b></div></div>
             <button id="toolPrintReport" class="toolPrint" type="button">Print operator report</button>
             <div id="toolToast" class="toolToast" aria-live="polite"></div>
           </article>
@@ -750,6 +794,6 @@
     </section>
   </main>
 
-  <script src="dashboard.js?v=381"></script>
+  <script src="dashboard.js?v=382"></script>
 </body>
 </html>
