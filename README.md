@@ -1,19 +1,20 @@
-# Raja Fraz Master Solar Dashboard - V38 DUAL LOGGER
+# Raja Fraz Master Solar Dashboard - V38.1 ACTIVE DUAL LOGGER
 
-V38 adds the new dedicated PV14000 WiFi logger directly to the Master server while preserving the existing PV9000 logger and all V37 topology rules.
+V38.1 confirms the dedicated PV14000 WiFi logger as commissioned and live while preserving the existing PV9000 logger and all topology safeguards.
 
-## V38 live topology
+## V38.1 live topology
 
-- **PV14000:** 10 kW AC, 6.78 kWp PV, dedicated logger configured (device ending `B1AF`).
+- **PV14000:** 10 kW AC, 6.78 kWp PV, dedicated logger active (device ending `B1AF`).
 - **PV9000:** 6 kW AC, one active string, `8 × 545 W = 4,360 W` (4.36 kWp), existing reassigned logger.
-- Installed and logger-configured PV capacity is now **11.14 kWp**.
-- Before the new dongle sends a frame, the UI shows **LOGGER READY · awaiting first data**. This is not treated as an inverter fault.
-- As soon as the dongle is powered and online, PV14000 automatically joins live solar, load, grid, energy, Flow, charts, Control Room, Intelligence, AI context, health and exports.
+- Installed and live-monitored PV capacity is now **11.14 kWp**.
+- PV14000 automatically joins live solar, load, grid, energy, Flow, charts, Control Room, Intelligence, AI context, health and exports.
 - PV14000 keeps both MPPT/string readings; PV9000 remains normalized to its single physical string.
+- Live telemetry refreshes every **5 seconds**.
+- The main Dashboard shows PV input current, AC output/load current and grid import/export current for each inverter plus combined current totals.
 - Matrix remains the downstream PV-less UPS supplied from PV9000; its internal AC transfer is not counted as utility-grid import.
-- PostgreSQL begins storing new PV14000 history samples automatically after the first live frame.
+- PostgreSQL stores PV14000 history samples automatically.
 
-## Render variables for V38
+## Render variables for V38.1
 
 `render.yaml` includes the dedicated `PV14000_DEVICE_ID` mapping and the existing PV9000 upstream URL. The Master server calls the official InverterZone logger API directly, so a second PV14000 dashboard service is not required.
 
@@ -330,7 +331,7 @@ Display Mode is designed for a 19–22 inch wall monitor and includes:
 - 5 kW night-import and 6 kW day-export guard meters;
 - Today Solar / Import / Export and PV yield;
 - large maintenance alert ticker;
-- Pakistan time, Gujrat weather, source freshness and automatic 10-second refresh;
+- Pakistan time, Gujrat weather, source freshness and automatic 5-second refresh;
 - fullscreen button plus browser Screen Wake Lock where supported;
 - automatic recovery reload after repeated live-data failures.
 
@@ -423,8 +424,7 @@ Professional master monitoring for the three-inverter topology plus the independ
 - AC output capacity: **10,000 W**
 - Installed PV: **6,780 W**
 - Role: solar inverter with a **dedicated WiFi logger**
-- Current live telemetry: collected directly by the Master server after the logger is powered
-- Initial UI state: **LOGGER READY** until the first frame arrives
+- Current live telemetry: collected directly by the Master server every 5 seconds
 
 ### System 02 - FRONUS META 6KW - PV9000
 - AC output capacity: **6,000 W**
@@ -450,14 +450,14 @@ The dashboard is topology-aware to prevent double-counting.
 - **Total installed PV = 6,780 + 4,360 = 11,140 W**
 - **Logger-configured monitored PV = 11,140 W**
 - **Current inverter grid estimate = PV14000 grid + PV9000 grid** whenever both feeds are live; Tuya remains the independent physical reference.
-- If PV14000 has not sent its first frame, the dashboard continues with PV9000 data and clearly marks PV14000 as awaiting data.
+- If the PV14000 logger connection is interrupted, the dashboard marks it temporarily offline and continues safely with the available sources.
 - Matrix AC input is an internal PV9000 -> Matrix transfer and is **not** utility-grid power.
 - Smart Load belongs to PV9000.
 - By default, Matrix UPS load is downstream of PV9000 and is **not added again** to Master site demand.
 
 ## Render environment variables
 
-V38 live logger mapping:
+V38.1 live logger mapping:
 
 ```text
 PV9000_API_BASE=https://inverterzone-dashboard.onrender.com

@@ -4,13 +4,16 @@ const clamp=(v,min=0,max=100)=>Math.max(min,Math.min(max,finite(v)));
 const fmtPower=(v)=>{const n=Math.abs(finite(v));return n>=1000?`${(n/1000).toFixed(n>=10000?1:2)} kW`:`${Math.round(n)} W`;};
 const fmtSignedPower=(v)=>{const n=finite(v);if(Math.abs(n)<20)return'IDLE';return `${n>=0?'+':'−'}${fmtPower(Math.abs(n))}`;};
 const fmtKwh=(v)=>v==null||!Number.isFinite(Number(v))?'-- kWh':`${finite(v).toFixed(2)} kWh`;
+const fmtCurrent=(v)=>`${finite(v).toFixed(1)} A`;
+const pvCurrentA=(s)=>finite(s?.pvCurrentA,finite(s?.pv1A)+finite(s?.pv2A));
+const outputCurrentA=(s)=>{const volts=finite(s?.outputV,finite(s?.gridV));return finite(s?.outputCurrentA,Math.abs(finite(s?.loadW))/(volts>0?volts:230));};
 const ageText=(ts)=>{if(!ts)return'No timestamp';const s=Math.max(0,Math.round((Date.now()-finite(ts,Date.now()))/1000));if(s<5)return'Updated now';if(s<60)return`Updated ${s}s ago`;return`Updated ${Math.floor(s/60)}m ago`;};
 const set=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
 const setWidth=(id,pct)=>{const el=$(id);if(el)el.style.width=`${clamp(pct)}%`;};
 let live=null,energy=null,analytics=null,failures=0,cursorTimer=null,wakeLock=null;
 const MONITORED_PV_W=11140;
 const monitoredPvW=()=>Math.max(1,finite(live?.capacities?.monitoredPvW,MONITORED_PV_W));
-function pv14000ConnectionState(a=live?.systems?.pv14000){if(a)return{label:'ONLINE',detail:ageText(a.updatedAt),pending:false};const code=String(live?.telemetryPlan?.pv14000||'ready-awaiting-first-data');if(code==='temporarily-offline')return{label:'LOGGER OFFLINE',detail:'Dedicated logger connection interrupted',pending:false};if(code==='not-configured')return{label:'NOT CONFIGURED',detail:'Logger mapping unavailable',pending:false};return{label:'LOGGER READY',detail:'Awaiting first data after plug-in',pending:true};}
+function pv14000ConnectionState(a=live?.systems?.pv14000){if(a)return{label:'ONLINE',detail:ageText(a.updatedAt),pending:false};const code=String(live?.telemetryPlan?.pv14000||'temporarily-offline');if(code==='not-configured')return{label:'NOT CONFIGURED',detail:'Logger mapping unavailable',pending:false};return{label:'LOGGER OFFLINE',detail:'Dedicated logger temporarily unavailable',pending:false};}
 
 function pkNow(){return new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Karachi'}));}
 function guardMode(){const d=pkNow(),mins=d.getHours()*60+d.getMinutes(),start=7*60+30,end=17*60;return mins>=start&&mins<end?'DAY':'NIGHT';}
@@ -25,14 +28,14 @@ function setLimitRow(selector,pct){const row=document.querySelector(selector);if
 
 function render(){if(!live)return;const s=live.systems||{},a=s.pv14000,b=s.pv9000,u=s.matrix,c=s.combined||{},m=live.meter||null;const pv14000State=pv14000ConnectionState(a);const grid=meterGrid(m,c);const solar=finite(c.solarW,finite(a?.solarW)+finite(b?.solarW));const demand=finite(c.siteDemandW,finite(a?.loadW)+finite(b?.loadW));const battPct=u?.batteryPct==null?null:finite(u.batteryPct);const battMode=batteryMode(u);const smart=finite(c.smartLoadW,finite(b?.smartLoadW));
 
-  set('roomSolar',fmtPower(solar));set('roomSolarSub',a?`${fmtPower(a.solarW)} PV14000 • ${fmtPower(b?.solarW)} PV9000`:`${fmtPower(b?.solarW)} PV9000 • PV14000 ${pv14000State.label.toLowerCase()}`);setWidth('roomSolarBar',solar/monitoredPvW()*100);
-  set('roomDemand',fmtPower(demand));set('roomDemandSub',`Power balance ${fmtSignedPower((solar+grid.signed)-demand)}`);setWidth('roomDemandBar',demand/16000*100);
-  set('roomGrid',grid.mode==='IDLE'?'IDLE':`${grid.mode==='IMPORTING'?'IMPORT':'EXPORT'} ${fmtPower(grid.watts)}`);set('roomGridSub',grid.source);setWidth('roomGridBar',grid.watts/(grid.mode==='EXPORTING'?6000:5000)*100);$('roomGridCard')?.classList.toggle('importing',grid.mode==='IMPORTING');$('roomGridCard')?.classList.toggle('exporting',grid.mode==='EXPORTING');
+  set('roomSolar',fmtPower(solar));set('roomSolarSub',a?`${fmtCurrent(pvCurrentA(a)+pvCurrentA(b))} PV current • ${fmtPower(a.solarW)} + ${fmtPower(b?.solarW)}`:`${fmtPower(b?.solarW)} PV9000 • PV14000 ${pv14000State.label.toLowerCase()}`);setWidth('roomSolarBar',solar/monitoredPvW()*100);
+  set('roomDemand',fmtPower(demand));set('roomDemandSub',`${fmtCurrent(finite(c.outputCurrentA,outputCurrentA(a)+outputCurrentA(b)))} output • Balance ${fmtSignedPower((solar+grid.signed)-demand)}`);setWidth('roomDemandBar',demand/16000*100);
+  set('roomGrid',grid.mode==='IDLE'?'IDLE':`${grid.mode==='IMPORTING'?'IMPORT':'EXPORT'} ${fmtPower(grid.watts)}`);set('roomGridSub',`${m?.currentA!=null?fmtCurrent(m.currentA):fmtCurrent(c.gridCurrentA)} • ${grid.source}`);setWidth('roomGridBar',grid.watts/(grid.mode==='EXPORTING'?6000:5000)*100);$('roomGridCard')?.classList.toggle('importing',grid.mode==='IMPORTING');$('roomGridCard')?.classList.toggle('exporting',grid.mode==='EXPORTING');
   set('roomBattery',battPct==null?'--':`${Math.round(battPct)}%`);set('roomBatterySub',u?`${battMode} • ${fmtPower(u.batteryW)}`:'Matrix UPS offline');setWidth('roomBatteryBar',battPct||0);$('roomBatteryCard')?.classList.toggle('low',battPct!=null&&battPct<25);
 
-  set('flowPv14000',a?fmtPower(a.solarW):pv14000State.label);set('flowPv14000State',a?'ONLINE':pv14000State.pending?'AWAITING DATA':'OFFLINE');setNode('nodePv14000',Boolean(a),finite(a?.solarW)>30,pv14000State.pending);setLine('linePv14000',Boolean(a)&&finite(a?.solarW)>30);
-  set('flowPv9000',b?fmtPower(b.solarW):'--');set('flowPv9000State',b?'1 STRING • LIVE':'OFFLINE');setNode('nodePv9000',Boolean(b),finite(b?.solarW)>30);setLine('linePv9000',Boolean(b)&&finite(b?.solarW)>30);
-  set('flowGrid',grid.mode==='IDLE'?'IDLE':fmtPower(grid.watts));set('flowGridDetail',grid.source);set('flowGridState',m?.online?grid.mode:'ESTIMATE');setNode('nodeGrid',Boolean(m?.online||a||b),grid.watts>30);setLine('lineGrid',grid.watts>30,grid.mode==='IMPORTING'?'importing':grid.mode==='EXPORTING'?'exporting':'');
+  set('flowPv14000',a?fmtPower(a.solarW):pv14000State.label);set('flowPv14000State',a?`${fmtCurrent(pvCurrentA(a))} PV • ${fmtCurrent(outputCurrentA(a))} LOAD`:'OFFLINE');setNode('nodePv14000',Boolean(a),finite(a?.solarW)>30);setLine('linePv14000',Boolean(a)&&finite(a?.solarW)>30);
+  set('flowPv9000',b?fmtPower(b.solarW):'--');set('flowPv9000State',b?`${fmtCurrent(pvCurrentA(b))} PV • ${fmtCurrent(outputCurrentA(b))} LOAD`:'OFFLINE');setNode('nodePv9000',Boolean(b),finite(b?.solarW)>30);setLine('linePv9000',Boolean(b)&&finite(b?.solarW)>30);
+  set('flowGrid',grid.mode==='IDLE'?'IDLE':fmtPower(grid.watts));set('flowGridDetail',`${m?.currentA!=null?fmtCurrent(m.currentA):fmtCurrent(c.gridCurrentA)} • ${grid.source}`);set('flowGridState',m?.online?grid.mode:'ESTIMATE');setNode('nodeGrid',Boolean(m?.online||a||b),grid.watts>30);setLine('lineGrid',grid.watts>30,grid.mode==='IMPORTING'?'importing':grid.mode==='EXPORTING'?'exporting':'');
   set('flowSite',fmtPower(demand));const balance=(solar+grid.signed)-demand;set('flowBalance',`Power balance ${Math.abs(balance)<100?'OK':fmtSignedPower(balance)}`);
   set('flowSmart',fmtPower(smart));setNode('nodeSmart',Boolean(b),smart>30);setLine('lineSmart',Boolean(b)&&smart>30);
   set('flowMatrix',u?fmtPower(u.loadW):'--');set('flowMatrixDetail',u?`Input ${fmtPower(u.acInputW)} → Load ${fmtPower(u.loadW)}`:'UPS unavailable');set('flowMatrixState',u?'ONLINE':'OFFLINE');setNode('nodeMatrix',Boolean(u),finite(u?.acInputW)>30||finite(u?.loadW)>30);setLine('lineMatrix',Boolean(u)&&(finite(u?.acInputW)>30||finite(u?.loadW)>30));
@@ -46,7 +49,7 @@ function render(){if(!live)return;const s=live.systems||{},a=s.pv14000,b=s.pv900
   set('roomLastUpdate',`Last update ${new Date().toLocaleTimeString('en-GB',{timeZone:'Asia/Karachi',hour12:false})} PKT`);
 }
 
-function renderSystemTile(key,data,vals){const id=key==='Pv14000'?'pv14000':key==='Pv9000'?'pv9000':'';if(!id)return;const state=key==='Pv14000'?pv14000ConnectionState(data):{label:'OFFLINE',detail:'API unavailable',pending:false};set(`${id}StateRoom`,data?'ONLINE':state.label);set(`${id}FreshRoom`,data?ageText(data.updatedAt):state.detail);set(`${id}SolarRoom`,data?fmtPower(vals.solar):state.pending?'WAITING DATA':'--');set(`${id}LoadRoom`,data?`Load ${fmtPower(vals.load)}`:key==='Pv14000'?'6.78 kWp monitored':'Load --');setTile(`tile${key}`,Boolean(data),state.pending);}
+function renderSystemTile(key,data,vals){const id=key==='Pv14000'?'pv14000':key==='Pv9000'?'pv9000':'';if(!id)return;const state=key==='Pv14000'?pv14000ConnectionState(data):{label:'OFFLINE',detail:'API unavailable',pending:false};set(`${id}StateRoom`,data?'ONLINE':state.label);set(`${id}FreshRoom`,data?ageText(data.updatedAt):state.detail);set(`${id}SolarRoom`,data?`${fmtPower(vals.solar)} • ${fmtCurrent(pvCurrentA(data))}`:'--');set(`${id}LoadRoom`,data?`Load ${fmtPower(vals.load)} • ${fmtCurrent(outputCurrentA(data))}`:key==='Pv14000'?'6.78 kWp monitored':'Load --');setTile(`tile${key}`,Boolean(data));}
 function renderMatrixTile(u){set('matrixStateRoom',u?'ONLINE':'OFFLINE');set('matrixFreshRoom',u?ageText(u.updatedAt):'API unavailable');set('matrixLoadRoom',u?fmtPower(u.loadW):'--');set('matrixInputRoom',u?`Input ${fmtPower(u.acInputW)}`:'Input --');setTile('tileMatrix',Boolean(u));}
 function renderTuyaTile(m,grid){set('tuyaStateRoom',m?.online?'ONLINE':'OFFLINE');set('tuyaFreshRoom',m?ageText(m.updatedAt):'API unavailable');set('tuyaModeRoom',grid.mode==='IMPORTING'?'Import':grid.mode==='EXPORTING'?'Export':'Grid');set('tuyaPowerRoom',grid.mode==='IDLE'?'0 W':fmtPower(grid.watts));set('tuyaElectricalRoom',m?.online?`${finite(m.voltage).toFixed(1)} V • ${finite(m.currentA).toFixed(2)} A`:'Physical meter offline');setTile('tileTuya',Boolean(m?.online));}
 
@@ -90,5 +93,5 @@ $('fullscreenBtn')?.addEventListener('click',toggleFullscreen);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&document.fullscreenElement)requestWakeLock();});
 function cursorActivity(){document.body.classList.remove('cursorHidden');clearTimeout(cursorTimer);cursorTimer=setTimeout(()=>document.body.classList.add('cursorHidden'),8000);}['mousemove','mousedown','touchstart','keydown'].forEach(e=>window.addEventListener(e,cursorActivity,{passive:true}));cursorActivity();
 
-async function start(){updateClock();setInterval(updateClock,1000);await wakeSources();await Promise.allSettled([loadLive(),loadEnergy(),loadAnalytics(),loadWeather()]);setInterval(loadLive,10000);setInterval(loadAnalytics,30000);setInterval(loadEnergy,60000);setInterval(loadWeather,600000);}
+async function start(){updateClock();setInterval(updateClock,1000);await wakeSources();await Promise.allSettled([loadLive(),loadEnergy(),loadAnalytics(),loadWeather()]);setInterval(loadLive,5000);setInterval(loadAnalytics,30000);setInterval(loadEnergy,60000);setInterval(loadWeather,600000);}
 start();

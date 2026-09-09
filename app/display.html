@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#06131f">
   <meta name="color-scheme" content="dark">
   <title>Raja Fraz Inverter Room Display</title>
-  <link rel="stylesheet" href="display.css?v=38">
+  <link rel="stylesheet" href="display.css?v=381">
 </head>
 <body>
   <div class="roomDisplay" id="roomDisplay">
@@ -69,7 +69,7 @@
             </svg>
 
             <div class="flowNode pv14000Node" id="nodePv14000">
-              <span>PV14000</span><b id="flowPv14000">LOGGER READY</b><small>Meta 10KW • 6.78 kWp monitored</small><em id="flowPv14000State">AWAITING DATA</em>
+              <span>PV14000</span><b id="flowPv14000">CONNECTING</b><small>Meta 10KW • 6.78 kWp monitored</small><em id="flowPv14000State">CONNECTING</em>
             </div>
             <div class="flowNode pv9000Node" id="nodePv9000">
               <span>PV9000</span><b id="flowPv9000">--</b><small>Meta 6KW • 1 string • 8×545 W</small><em id="flowPv9000State">--</em>
@@ -105,9 +105,9 @@
 
           <article class="systemTile" id="tilePv14000">
             <div class="systemStripe solarStripe"></div>
-            <div class="systemName"><span>FRONUS META 10KW</span><b>PV14000</b><small id="pv14000FreshRoom">Awaiting first logger data</small></div>
-            <div class="systemReading"><span>Solar</span><b id="pv14000SolarRoom">WAITING DATA</b><small id="pv14000LoadRoom">6.78 kWp monitored</small></div>
-            <em class="systemState" id="pv14000StateRoom">LOGGER READY</em>
+            <div class="systemName"><span>FRONUS META 10KW</span><b>PV14000</b><small id="pv14000FreshRoom">Connecting live logger</small></div>
+            <div class="systemReading"><span>Solar</span><b id="pv14000SolarRoom">--</b><small id="pv14000LoadRoom">6.78 kWp monitored</small></div>
+            <em class="systemState" id="pv14000StateRoom">CHECKING</em>
           </article>
 
           <article class="systemTile" id="tilePv9000">
@@ -154,6 +154,6 @@
       <span>Auto refresh 10s • <a href="/" tabindex="-1">Open full dashboard</a></span>
     </footer>
   </div>
-  <script src="display.js?v=38"></script>
+  <script src="display.js?v=381"></script>
 </body>
 </html>

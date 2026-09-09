@@ -12,7 +12,7 @@ const __dirname = dirname(__filename);
 const APP_DIR = join(__dirname, "app");
 const PORT = Number(process.env.PORT || 10000);
 
-// V38 DUAL LOGGER ACTIVATION
+// V38.1 ACTIVE DUAL LOGGER
 // The Wi-Fi logger that was previously named PV14000 is now physically fitted
 // to PV9000. Existing Render variables keep working: PV14000_API_BASE / META_API_BASE
 // are treated as the reassigned PV9000 logger until a dedicated PV9000 URL is set.
@@ -30,7 +30,7 @@ const LEGACY_WIFI_PASSWORD = String(
 
 // SYSTEM 01 - PV14000 now has its own dedicated InverterZone Wi-Fi logger.
 // A separate upstream dashboard can still be used through PV14000_NEW_API_BASE,
-// but V38 can collect the official logger API directly when that URL is blank.
+// but V38.1 can collect the official logger API directly when that URL is blank.
 const PV14000_API_BASE = String(process.env.PV14000_NEW_API_BASE || "").replace(/\/$/, "");
 const PV14000_USER = String(process.env.PV14000_NEW_DASHBOARD_USER || LEGACY_WIFI_USER).trim() || "admin";
 const PV14000_PASSWORD = String(process.env.PV14000_NEW_DASHBOARD_PASSWORD || LEGACY_WIFI_PASSWORD);
@@ -45,7 +45,7 @@ const PV14000_VENDOR_LIVE_ENDPOINTS = [
 const PV14000_VENDOR_ENERGY_ENDPOINT = "https://inverterzone.com/api/getEnergy";
 const PV14000_CONFIGURED = Boolean(PV14000_API_BASE || PV14000_DEVICE_ID);
 const PV14000_TRANSPORT = PV14000_API_BASE ? "upstream-dashboard" : PV14000_DEVICE_ID ? "direct-inverterzone-api" : "not-configured";
-let pv14000HasConnected = false;
+let pv14000LastConnectedAt = 0;
 
 // SYSTEM 02 - PV9000 now owns the reassigned Wi-Fi logger.
 const PV9000_API_BASE = String(process.env.PV9000_API_BASE || LEGACY_WIFI_API_BASE).replace(/\/$/, "");
@@ -382,8 +382,8 @@ async function getDirectPv14000Live(options = {}) {
       const source = unwrap(payload);
       const telemetryKeys = ["solarW", "solarWatts", "solarW1", "solarW2", "acOutW", "gridW", "heatSinkDegC", "fanSpeed"];
       if (!telemetryKeys.some((key) => Object.prototype.hasOwnProperty.call(source, key))) {
-        const error = new Error("PV14000 logger is registered but has not returned its first telemetry frame yet");
-        error.code = "AWAITING_FIRST_DATA";
+        const error = new Error("PV14000 logger did not return a valid telemetry frame");
+        error.code = "UPSTREAM_NOT_READY";
         throw error;
       }
       return payload;
@@ -418,6 +418,12 @@ function normalizeSolarInverter(payload, config) {
   const solar = first(s, ["solarWatts", "solarW", "pvWatts", "PV_Total_Power"]);
   const load = first(s, ["loadWatts", "acOutW", "loadPower", "AC_out_Watt"]);
   const grid = first(s, ["gridWatts", "gridW", "gridPower", "Grid_Watt"]);
+  const gridV = first(s, ["gridVoltage", "gridV", "AC_in_Voltage"]);
+  const outputV = first(s, ["outputVoltage", "acOutV", "loadVoltage", "AC_out_Voltage"], gridV);
+  const reportedOutputA = first(s, ["outputCurrent", "acOutA", "loadCurrent", "AC_out_Ampere"], NaN);
+  const reportedGridA = first(s, ["gridCurrent", "gridA", "AC_in_Ampere"], NaN);
+  const outputCurrentA = Number.isFinite(reportedOutputA) ? Math.abs(reportedOutputA) : Math.abs(load) / (outputV > 0 ? outputV : 230);
+  const gridCurrentA = Number.isFinite(reportedGridA) ? Math.abs(reportedGridA) : Math.abs(grid) / (gridV > 0 ? gridV : 230);
   const batteryPct = first(s, ["batteryPercentage", "battPercent", "batterySoc"], NaN);
   return {
     key: config.key,
@@ -434,9 +440,13 @@ function normalizeSolarInverter(payload, config) {
     pv2V: first(s, ["pv2Voltage", "pv2V", "solarV2"]),
     pv1A: first(s, ["pv1Ampere", "pv1A", "solarA1"]),
     pv2A: first(s, ["pv2Ampere", "pv2A", "solarA2"]),
+    pvCurrentA: first(s, ["pv1Ampere", "pv1A", "solarA1"]) + first(s, ["pv2Ampere", "pv2A", "solarA2"]),
     loadW: load,
+    outputV,
+    outputCurrentA,
     gridW: grid,
-    gridV: first(s, ["gridVoltage", "gridV", "AC_in_Voltage"]),
+    gridV,
+    gridCurrentA,
     gridHz: first(s, ["gridHz", "gridFrequency"]),
     batteryPct: Number.isFinite(batteryPct) ? batteryPct : null,
     batteryW: first(s, ["batteryPowerWatts", "batteryW"], 0),
@@ -484,6 +494,7 @@ function normalizePv9000(payload) {
     pv2V: 0,
     pv1A: useSecondInput ? num(normalized.pv2A) : num(normalized.pv1A),
     pv2A: 0,
+    pvCurrentA: useSecondInput ? num(normalized.pv2A) : num(normalized.pv1A),
     activeStrings: 1,
     stringLayout: "1 × 8 panels × 545 W = 4.36 kWp",
     loggerSource: "reassigned-from-pv14000"
@@ -754,6 +765,10 @@ function combine(pv14000, pv9000, matrix) {
   if (!PV9000_LOAD_INCLUDES_UPS) siteDemandW += num(matrix?.loadW);
 
   const systemsPresent = [pv14000, pv9000, matrix].filter(Boolean).length;
+  const gridVoltages = solarSystems.map((item) => num(item.gridV)).filter((value) => value > 0);
+  const gridVoltage = gridVoltages.length ? gridVoltages.reduce((total, value) => total + value, 0) / gridVoltages.length : 0;
+  const outputCurrentA = solarSum("outputCurrentA");
+  const gridCurrentA = gridVoltage > 0 ? Math.abs(utilityGridW) / gridVoltage : solarSum("gridCurrentA");
   return {
     key: "combined",
     name: "Raja Fraz Solar Estate",
@@ -762,12 +777,18 @@ function combine(pv14000, pv9000, matrix) {
     totalSystems: EXPECTED_MONITORED_SYSTEMS,
     physicalSystems: 3,
     solarW: solarSum("solarW"),
+    pv14000CurrentA: num(pv14000?.pv1A) + num(pv14000?.pv2A),
+    pv9000CurrentA: num(pv9000?.pv1A) + num(pv9000?.pv2A),
+    pvCurrentA: num(pv14000?.pv1A) + num(pv14000?.pv2A) + num(pv9000?.pv1A) + num(pv9000?.pv2A),
     pvInstalledW: TOTAL_PV_INSTALLED_W,
     monitoredPvInstalledW: CURRENT_MONITORED_PV_W,
     siteUpstreamAcCapacityW: SITE_UPSTREAM_AC_CAPACITY_W,
     siteDemandW,
+    outputCurrentA,
     utilityGridW,
     gridW: utilityGridW,
+    gridVoltage,
+    gridCurrentA,
     gridDirection: direction(utilityGridW),
     smartLoadW,
     upsLoadW: num(matrix?.loadW),
@@ -785,7 +806,7 @@ function combine(pv14000, pv9000, matrix) {
       matrixPvInstalledW: 0,
       smartLoadSource: "pv9000",
       utilityGridSources: pv14000 ? ["pv14000", "pv9000"] : ["pv9000"],
-      pv14000Telemetry: pv14000 ? "online" : PV14000_CONFIGURED ? "ready-awaiting-first-data" : "not-configured",
+      pv14000Telemetry: pv14000 ? "online" : PV14000_CONFIGURED ? "temporarily-offline" : "not-configured",
       pv9000Strings: 1,
       matrixExcludedFromUtilityGrid: true,
       matrixExcludedFromSiteDemand: PV9000_LOAD_INCLUDES_UPS,
@@ -851,7 +872,7 @@ async function fetchEnergy(period = "T") {
       matrixEnergyExcludedFromSiteTotals: PV9000_LOAD_INCLUDES_UPS,
       matrixGridExcludedFromSiteTotals: true,
       smartLoadBelongsTo: "pv9000",
-      pv14000Telemetry: pv14000 ? "online" : PV14000_CONFIGURED ? "ready-awaiting-first-data" : "not-configured",
+      pv14000Telemetry: pv14000 ? "online" : PV14000_CONFIGURED ? "temporarily-offline" : "not-configured",
       pv9000Strings: 1
     },
     errors: {
@@ -865,7 +886,6 @@ async function fetchEnergy(period = "T") {
 function sourceHint(label, error) {
   if (!error) return null;
   if (error.code === "NOT_CONFIGURED") return `${label} API is not configured in Render.`;
-  if (error.code === "AWAITING_FIRST_DATA") return `${label} logger is ready; waiting for its first telemetry frame after installation.`;
   if (error.status === 401) return `${label} dashboard requires Basic Auth. Check its dashboard password in Render.`;
   return error.message;
 }
@@ -1085,7 +1105,7 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
 
   if (aResult.status === "fulfilled" && aResult.value) {
     systems.pv14000 = aResult.value;
-    pv14000HasConnected = true;
+    pv14000LastConnectedAt = Date.now();
   } else if (PV14000_CONFIGURED && aResult.status === "rejected") {
     errors.pv14000 = sourceHint("PV14000", aResult.reason);
   }
@@ -1109,7 +1129,7 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
     meter,
     errors,
     updatedAt: Date.now(),
-    refreshSeconds: 10,
+    refreshSeconds: 5,
     matrixFrameSeconds: 60,
     tuyaPollSeconds: 10,
     rate: RATE,
@@ -1132,7 +1152,7 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
     },
     topology: systems.combined.topology,
     telemetryPlan: {
-      pv14000: systems.pv14000 ? "live" : PV14000_CONFIGURED ? (pv14000HasConnected ? "temporarily-offline" : "ready-awaiting-first-data") : "not-configured",
+      pv14000: systems.pv14000 ? "live" : PV14000_CONFIGURED ? "temporarily-offline" : "not-configured",
       pv14000Transport: PV14000_TRANSPORT,
       pv14000Device: PV14000_DEVICE_ID ? `••••${PV14000_DEVICE_ID.slice(-4)}` : null,
       pv9000: "reassigned-wifi-logger",
@@ -1624,7 +1644,7 @@ function buildLiveAlerts(live) {
   const s = live?.systems || {};
   const a = s.pv14000 || null, b = s.pv9000 || null, u = s.matrix || null, c = s.combined || {};
   const m = live?.meter || null;
-  if (PV14000_CONFIGURED && pv14000HasConnected && !a) add("pv14000-offline", "warning", "PV14000 LOGGER OFFLINE", "The dedicated PV14000 logger stopped returning telemetry after connecting successfully.", "Check PV14000 power, Wi-Fi and logger seating.");
+  if (PV14000_CONFIGURED && !a) add("pv14000-offline", "warning", "PV14000 LOGGER OFFLINE", "The dedicated PV14000 logger is not returning telemetry.", "Check PV14000 power, Wi-Fi and logger seating.");
   if (PV9000_API_BASE && !b) add("pv9000-offline", "warning", "PV9000 OFFLINE", "Fronus Meta 6 kW telemetry is unavailable.", "Check inverter Wi-Fi and PV9000 API service.");
   if (!u) add("matrix-offline", "critical", "MATRIX UPS OFFLINE", "Matrix UPS telemetry is unavailable.", "Check UPS communication before maintenance decisions.");
   if (!m?.online) add("tuya-offline", "critical", "TUYA GRID METER OFFLINE", "Physical utility meter data is unavailable, so grid guardrails cannot be trusted.", "Check Tuya cloud/device connectivity.");
@@ -1916,7 +1936,7 @@ async function askSolarAi(message, history) {
 Rules:
 - Use the TELEMETRY SNAPSHOT below as the source of truth for current readings. If a source is offline/stale/missing, say that clearly and do not invent a value.
 - Understand the current topology: PV9000 uses one string of 8 × 545 W panels (4.36 kWp) and its reassigned WiFi logger. PV14000 has 6.78 kWp and a newly configured dedicated logger. Together they provide 11.14 kWp of monitored PV when both feeds are live. PV9000 feeds the Matrix UPS; Matrix is PV-less; Tuya is the independent physical utility meter.
-- Before PV14000 sends its first frame, describe it as "logger ready — awaiting first data", not failed. After it has connected, report a later loss as a logger connectivity issue. Do not invent PV14000 readings while its feed is absent.
+- PV14000's dedicated logger is commissioned and active. If its feed is absent, describe it as a temporary logger connectivity issue. Do not invent PV14000 readings while its feed is absent.
 - Matrix downstream load can already be included in PV9000 load, so do not double-count it.
 - Tuya Consumption means grid import and Generate means grid export when that direction is confirmed.
 - The dashboard's guardrails are monitoring targets, not automatic control: night import 5 kW and day export 6 kW unless telemetry config says otherwise.
@@ -2054,13 +2074,14 @@ const server = http.createServer(async (req, res) => {
     }));
     if (url.pathname === "/api/health") return json(res, 200, {
       success: true,
-      service: "Raja Fraz Master Solar Command Center - V38 Dual Logger",
+      service: "Raja Fraz Master Solar Command Center - V38.1 Active Dual Logger",
       pv14000: {
         base: PV14000_API_BASE || null,
         configured: PV14000_CONFIGURED,
         transport: PV14000_TRANSPORT,
         device: PV14000_DEVICE_ID ? `••••${PV14000_DEVICE_ID.slice(-4)}` : null,
-        state: pv14000HasConnected ? "connected" : PV14000_CONFIGURED ? "ready-awaiting-first-data" : "not-configured",
+        state: pv14000LastConnectedAt ? "connected" : PV14000_CONFIGURED ? "commissioned" : "not-configured",
+        lastConnectedAt: pv14000LastConnectedAt || null,
         authConfigured: PV14000_API_BASE ? Boolean(PV14000_PASSWORD) : null
       },
       pv9000: { base: PV9000_API_BASE || null, configured: Boolean(PV9000_API_BASE), authConfigured: Boolean(PV9000_PASSWORD) },
