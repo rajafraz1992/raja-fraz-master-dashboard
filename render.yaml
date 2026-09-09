@@ -20,6 +20,8 @@ services:
         sync: false
       - key: PV14000_NEW_API_BASE
         sync: false
+      - key: PV14000_DEVICE_ID
+        value: "8C:AA:B5:D3:B1:AF"
       - key: PV14000_NEW_DASHBOARD_USER
         value: admin
       - key: PV14000_NEW_DASHBOARD_PASSWORD
@@ -56,12 +58,6 @@ services:
         value: 65
       - key: HISTORY_SAMPLE_SECONDS
         value: 60
-      - key: POWER_SMART_SESSION_HOURS
-        value: 8
-      - key: POWER_SMART_CACHE_SECONDS
-        value: 120
-      - key: POWER_SMART_MDM_PRIVATE_KEY
-        sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL

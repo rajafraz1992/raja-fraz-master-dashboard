@@ -3,8 +3,6 @@ import { readFileSync, existsSync } from "node:fs";
 import { extname, join, resolve, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
-import { randomBytes } from "node:crypto";
-import { normalizePowerSmartDaily, normalizePowerSmartMonthly } from "./lib/powersmart-normalize.mjs";
 import pg from "pg";
 import webpush from "web-push";
 
@@ -14,7 +12,7 @@ const __dirname = dirname(__filename);
 const APP_DIR = join(__dirname, "app");
 const PORT = Number(process.env.PORT || 10000);
 
-// V37 LOGGER REASSIGNMENT
+// V38 DUAL LOGGER ACTIVATION
 // The Wi-Fi logger that was previously named PV14000 is now physically fitted
 // to PV9000. Existing Render variables keep working: PV14000_API_BASE / META_API_BASE
 // are treated as the reassigned PV9000 logger until a dedicated PV9000 URL is set.
@@ -30,11 +28,24 @@ const LEGACY_WIFI_PASSWORD = String(
   process.env.PV14000_DASHBOARD_PASSWORD || process.env.META_DASHBOARD_PASSWORD || ""
 );
 
-// SYSTEM 01 - PV14000 remains physically installed, but its live telemetry is
-// intentionally disabled until a new logger is ordered and configured here.
+// SYSTEM 01 - PV14000 now has its own dedicated InverterZone Wi-Fi logger.
+// A separate upstream dashboard can still be used through PV14000_NEW_API_BASE,
+// but V38 can collect the official logger API directly when that URL is blank.
 const PV14000_API_BASE = String(process.env.PV14000_NEW_API_BASE || "").replace(/\/$/, "");
 const PV14000_USER = String(process.env.PV14000_NEW_DASHBOARD_USER || LEGACY_WIFI_USER).trim() || "admin";
 const PV14000_PASSWORD = String(process.env.PV14000_NEW_DASHBOARD_PASSWORD || LEGACY_WIFI_PASSWORD);
+function normalizeDeviceId(value) {
+  return String(value || "").replace(/[^0-9A-F]/gi, "").toUpperCase();
+}
+const PV14000_DEVICE_ID = normalizeDeviceId(process.env.PV14000_DEVICE_ID || "8CAAB5D3B1AF");
+const PV14000_VENDOR_LIVE_ENDPOINTS = [
+  "https://inverterzone.com/api/getRealtimeData",
+  "https://inverterzone.com/data-api/getRealtimeData"
+];
+const PV14000_VENDOR_ENERGY_ENDPOINT = "https://inverterzone.com/api/getEnergy";
+const PV14000_CONFIGURED = Boolean(PV14000_API_BASE || PV14000_DEVICE_ID);
+const PV14000_TRANSPORT = PV14000_API_BASE ? "upstream-dashboard" : PV14000_DEVICE_ID ? "direct-inverterzone-api" : "not-configured";
+let pv14000HasConnected = false;
 
 // SYSTEM 02 - PV9000 now owns the reassigned Wi-Fi logger.
 const PV9000_API_BASE = String(process.env.PV9000_API_BASE || LEGACY_WIFI_API_BASE).replace(/\/$/, "");
@@ -64,19 +75,6 @@ const RECONCILIATION_ALERT_W = Math.max(100, Number(process.env.RECONCILIATION_A
 const ALERT_TEMP_C = Math.max(30, Number(process.env.ALERT_TEMP_C || 65));
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const HISTORY_SAMPLE_SECONDS = Math.max(30, Number(process.env.HISTORY_SAMPLE_SECONDS || 60));
-
-// Power Smart / PITC account bridge. This integration intentionally uses only
-// the owner's normal Power Smart account session. No shared or extracted MDM
-// service credential is embedded in this project.
-const POWER_SMART_APP_BASE = "https://api-powersmart.pitc.com.pk";
-const POWER_SMART_MDM_BASE = "https://api.mdm.pitc.com.pk";
-const POWER_SMART_MDM_PRIVATE_KEY = String(process.env.POWER_SMART_MDM_PRIVATE_KEY || "").trim();
-const POWER_SMART_MDM_KEY_HEADER = "privatekey";
-const POWER_SMART_SESSION_HOURS = Math.max(1, Math.min(24, Number(process.env.POWER_SMART_SESSION_HOURS || 8)));
-const POWER_SMART_SESSION_MS = POWER_SMART_SESSION_HOURS * 60 * 60 * 1000;
-const POWER_SMART_CACHE_MS = Math.max(30_000, Number(process.env.POWER_SMART_CACHE_SECONDS || 120) * 1000);
-const powerSmartSessions = new Map();
-const powerSmartSignInAttempts = new Map();
 
 // Optional AI Copilot. Gemini is the zero-cost/default provider when a
 // GEMINI_API_KEY is configured. OpenAI remains an optional fallback. Keys never
@@ -142,9 +140,9 @@ const PV9000_PV_INSTALLED_W = 4360;
 const PV9000_AC_CAPACITY_W = 6000;
 const MATRIX_AC_CAPACITY_W = 6000;
 const TOTAL_PV_INSTALLED_W = PV14000_PV_INSTALLED_W + PV9000_PV_INSTALLED_W;
-const CURRENT_MONITORED_PV_W = PV9000_PV_INSTALLED_W + (PV14000_API_BASE ? PV14000_PV_INSTALLED_W : 0);
+const CURRENT_MONITORED_PV_W = PV9000_PV_INSTALLED_W + (PV14000_CONFIGURED ? PV14000_PV_INSTALLED_W : 0);
 const SITE_UPSTREAM_AC_CAPACITY_W = PV14000_AC_CAPACITY_W + PV9000_AC_CAPACITY_W;
-const EXPECTED_MONITORED_SYSTEMS = PV14000_API_BASE ? 3 : 2;
+const EXPECTED_MONITORED_SYSTEMS = PV14000_CONFIGURED ? 3 : 2;
 
 const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 4 }) : null;
 let dbReady = false;
@@ -329,7 +327,7 @@ async function getJson(url, { timeoutMs = 16000, headers = {} } = {}) {
     clearTimeout(timer);
   }
 }
-async function postJson(url, body, { timeoutMs = 18000, headers = {} } = {}) {
+async function postFormJson(url, values, { timeoutMs = 16000, headers = {} } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -337,238 +335,32 @@ async function postJson(url, body, { timeoutMs = 18000, headers = {} } = {}) {
       method: "POST",
       signal: controller.signal,
       headers: {
-        "User-Agent": "Raja-Fraz-Master/39.0",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        "User-Agent": "Raja-Fraz-Master/38.0",
         ...headers
       },
-      body: JSON.stringify(body || {})
+      body: new URLSearchParams(values).toString()
     });
-    const raw = await response.text();
+    const text = await response.text();
     let data;
-    try { data = JSON.parse(raw); }
-    catch {
-      const error = new Error(`Power Smart returned a non-JSON response (HTTP ${response.status}).`);
-      error.status = response.status || 502;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      const error = new Error(`InverterZone logger API returned non-JSON (HTTP ${response.status})`);
+      error.status = response.status;
+      error.code = "UPSTREAM_NOT_READY";
       throw error;
     }
-    if (!response.ok) {
-      const error = new Error(String(data?.message || data?.error || `HTTP ${response.status}`).slice(0, 260));
+    if (!response.ok || data?.success === false) {
+      const detail = data?.error || data?.msg || data?.message || `HTTP ${response.status}`;
+      const error = new Error(String(detail).slice(0, 300));
       error.status = response.status;
-      error.payload = data;
       throw error;
     }
     return data;
   } finally {
     clearTimeout(timer);
   }
-}
-
-function powerSmartCleanRef(value) {
-  return String(value || "").replace(/\D/g, "").slice(0, 20);
-}
-function powerSmartMaskRef(value) {
-  const ref = powerSmartCleanRef(value);
-  if (!ref) return "Meter";
-  if (ref.length <= 6) return `••${ref.slice(-3)}`;
-  return `${ref.slice(0, 3)}•••••••${ref.slice(-4)}`;
-}
-function powerSmartCookieMap(req) {
-  const out = {};
-  for (const part of String(req.headers.cookie || "").split(";")) {
-    const at = part.indexOf("=");
-    if (at <= 0) continue;
-    out[part.slice(0, at).trim()] = decodeURIComponent(part.slice(at + 1).trim());
-  }
-  return out;
-}
-function powerSmartSetCookie(req, res, id, maxAgeSeconds = Math.round(POWER_SMART_SESSION_MS / 1000)) {
-  const secure = String(req.headers["x-forwarded-proto"] || "").toLowerCase() === "https" || !String(req.headers.host || "").startsWith("localhost");
-  res.setHeader("Set-Cookie", `rf_ps=${encodeURIComponent(id)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.max(0, maxAgeSeconds)}${secure ? "; Secure" : ""}`);
-}
-function powerSmartSameOrigin(req) {
-  const origin = String(req.headers.origin || "").trim();
-  if (!origin) return true;
-  try { return new URL(origin).host === String(req.headers.host || ""); }
-  catch { return false; }
-}
-function powerSmartSession(req, { touch = true } = {}) {
-  const id = powerSmartCookieMap(req).rf_ps;
-  if (!id) return null;
-  const session = powerSmartSessions.get(id);
-  if (!session) return null;
-  const now = Date.now();
-  if (session.expiresAt <= now) {
-    powerSmartSessions.delete(id);
-    return null;
-  }
-  if (touch) session.expiresAt = now + POWER_SMART_SESSION_MS;
-  return session;
-}
-function powerSmartConsumeSignIn(req) {
-  const key = aiClientIp(req);
-  const now = Date.now();
-  const windowMs = 15 * 60 * 1000;
-  const current = powerSmartSignInAttempts.get(key);
-  if (!current || now - current.startedAt >= windowMs) {
-    powerSmartSignInAttempts.set(key, { startedAt: now, count: 1 });
-    return { ok: true };
-  }
-  if (current.count >= 5) return { ok: false, retryAfterSeconds: Math.ceil((windowMs - (now - current.startedAt)) / 1000) };
-  current.count += 1;
-  return { ok: true };
-}
-function powerSmartApiRoot(payload) {
-  if (payload?.data && typeof payload.data === "object" && !Array.isArray(payload.data)) return { ...payload, ...payload.data };
-  return payload && typeof payload === "object" ? payload : {};
-}
-function powerSmartApiAccepted(payload) {
-  const root = powerSmartApiRoot(payload);
-  const status = String(root.status ?? root.statusCode ?? "").toLowerCase();
-  if (root.success === false || root.ok === false) return false;
-  if (["400", "401", "403", "404", "500", "false", "failed", "error"].includes(status)) return false;
-  return Boolean(root.token || root.accessToken || root.jwt || ["", "1", "200", "true", "success", "ok"].includes(status));
-}
-function powerSmartMeters(payload) {
-  const root = powerSmartApiRoot(payload);
-  const rows = root.tblRegisteredRefNo || root.registeredRefNo || root.meters || root.references || [];
-  if (!Array.isArray(rows)) return [];
-  return rows.map((row, index) => {
-    const ref = powerSmartCleanRef(row?.refNo || row?.referenceNo || row?.reference_number || row?.refNum);
-    if (!ref) return null;
-    return {
-      id: `m${index + 1}`,
-      ref,
-      refMasked: powerSmartMaskRef(ref),
-      category: String(row?.connectionCategory || row?.category || "").slice(0, 80),
-      customerIdMasked: powerSmartMaskRef(row?.customerId || ""),
-      isDefault: [1, "1", true, "true"].includes(row?.defaultStatus)
-    };
-  }).filter(Boolean);
-}
-function powerSmartPublicMeters(session) {
-  return session.meters.map(({ id, refMasked, category, customerIdMasked, isDefault }) => ({ id, refMasked, category, customerIdMasked, isDefault }));
-}
-function powerSmartPublicState(session) {
-  if (!session) return {
-    ok: true, connected: false, source: "PITC Power Smart account API", sourceMode: "official-account",
-    dailyMdmAvailable: Boolean(POWER_SMART_MDM_PRIVATE_KEY), instantMdmAvailable: false, sessionHours: POWER_SMART_SESSION_HOURS
-  };
-  const selected = session.meters.find((m) => m.id === session.selectedMeterId);
-  return {
-    ok: true,
-    connected: true,
-    accountName: session.accountName,
-    meters: powerSmartPublicMeters(session),
-    selectedMeterId: session.selectedMeterId,
-    selectedMeterRef: selected?.refMasked || "Meter",
-    selectedCategory: selected?.category || "",
-    source: "PITC Power Smart account API",
-    sourceMode: "official-account",
-    dailyMdmAvailable: Boolean(POWER_SMART_MDM_PRIVATE_KEY),
-    instantMdmAvailable: false,
-    lastFetchAt: session.lastFetchAt || null,
-    expiresAt: new Date(session.expiresAt).toISOString(),
-    sessionHours: POWER_SMART_SESSION_HOURS
-  };
-}
-async function powerSmartSignIn(email, cnic, password) {
-  const payload = await postJson(`${POWER_SMART_APP_BASE}/appUser/signin`, {
-    emailUserId: String(email || "").trim(), contactNo: "", cnic: powerSmartCleanRef(cnic), password: String(password || "")
-  });
-  const root = powerSmartApiRoot(payload);
-  if (!powerSmartApiAccepted(payload)) {
-    const error = new Error(String(root.message || root.error || "Power Smart sign-in failed.").slice(0, 240));
-    error.status = 401;
-    throw error;
-  }
-  const token = String(root.token || root.accessToken || root.jwt || "").trim();
-  if (!token) {
-    const error = new Error("Power Smart signed in but did not return an account token.");
-    error.status = 502;
-    throw error;
-  }
-  const meters = powerSmartMeters(payload);
-  if (!meters.length) {
-    const error = new Error("No registered meter was returned by this Power Smart account.");
-    error.status = 422;
-    throw error;
-  }
-  return { token, meters, accountName: String(root.appUserName || root.userName || root.name || "Power Smart User").slice(0, 100) };
-}
-async function powerSmartMonthlyRequest(session, ref) {
-  const url = `${POWER_SMART_APP_BASE}/getHistory/monthlyConsumption`;
-  const body = { refNo: ref };
-  try {
-    return await postJson(url, body, { headers: { Authorization: session.token } });
-  } catch (error) {
-    if (![401, 403].includes(Number(error.status)) || /^Bearer\s/i.test(session.token)) throw error;
-    return postJson(url, body, { headers: { Authorization: `Bearer ${session.token}` } });
-  }
-}
-async function powerSmartDailyRequest(ref) {
-  if (!POWER_SMART_MDM_PRIVATE_KEY) {
-    const error = new Error("Official daily records need a dedicated PITC MDM authorization key. Monthly account records remain available.");
-    error.status = 503;
-    error.code = "POWER_SMART_DAILY_AUTH_REQUIRED";
-    throw error;
-  }
-  return postJson(`${POWER_SMART_MDM_BASE}/api/daily_read`, { reference_number: ref }, {
-    headers: { [POWER_SMART_MDM_KEY_HEADER]: POWER_SMART_MDM_PRIVATE_KEY }
-  });
-}
-async function powerSmartFetch(session, { force = false } = {}) {
-  if (!force && session.cache && Date.now() - session.lastFetchAt < POWER_SMART_CACHE_MS) return session.cache;
-  const meter = session.meters.find((m) => m.id === session.selectedMeterId);
-  if (!meter) throw Object.assign(new Error("Selected Power Smart meter is unavailable."), { status: 400 });
-  const payload = await powerSmartMonthlyRequest(session, meter.ref);
-  if (!powerSmartApiAccepted(payload)) {
-    const root = powerSmartApiRoot(payload);
-    throw Object.assign(new Error(String(root.message || root.error || "Power Smart monthly data request failed.").slice(0, 240)), { status: 502 });
-  }
-  const normalized = normalizePowerSmartMonthly(payload);
-  session.lastFetchAt = Date.now();
-  session.cache = {
-    ok: true,
-    connected: true,
-    meterRef: meter.refMasked,
-    category: meter.category,
-    accountName: session.accountName,
-    ...normalized,
-    source: "PITC Power Smart account API",
-    sourceMode: "official-account",
-    instantMdmAvailable: false,
-    refreshedAt: new Date().toISOString(),
-    refreshSeconds: Math.round(POWER_SMART_CACHE_MS / 1000),
-    note: "Official Power Smart account/billing data. It may update less frequently than the physical Tuya meter."
-  };
-  return session.cache;
-}
-async function powerSmartFetchDaily(session, { force = false } = {}) {
-  if (!force && session.dailyCache && Date.now() - session.dailyLastFetchAt < POWER_SMART_CACHE_MS) return session.dailyCache;
-  const meter = session.meters.find((m) => m.id === session.selectedMeterId);
-  if (!meter) throw Object.assign(new Error("Selected Power Smart meter is unavailable."), { status: 400 });
-  const payload = await powerSmartDailyRequest(meter.ref);
-  if (!powerSmartApiAccepted(payload)) {
-    const root = powerSmartApiRoot(payload);
-    throw Object.assign(new Error(String(root.message || root.error || "Power Smart daily data request failed.").slice(0, 240)), { status: 502 });
-  }
-  const normalized = normalizePowerSmartDaily(payload);
-  session.dailyLastFetchAt = Date.now();
-  session.dailyCache = {
-    ok: true,
-    connected: true,
-    meterRef: meter.refMasked,
-    category: meter.category,
-    accountName: session.accountName,
-    ...normalized,
-    source: "PITC MDM official daily read",
-    sourceMode: "official-daily-mdm",
-    refreshedAt: new Date().toISOString(),
-    refreshSeconds: Math.round(POWER_SMART_CACHE_MS / 1000),
-    note: "Official day-wise import/export records. Peak and off-peak values are kept separate."
-  };
-  return session.dailyCache;
 }
 async function getDashboardJson(base, path, user, password, options = {}) {
   if (!base) {
@@ -582,7 +374,43 @@ async function getDashboardJson(base, path, user, password, options = {}) {
     headers: { ...(options.headers || {}), ...(auth ? { Authorization: auth } : {}) }
   });
 }
-const getPv14000Json = (path, options = {}) => getDashboardJson(PV14000_API_BASE, path, PV14000_USER, PV14000_PASSWORD, options);
+async function getDirectPv14000Live(options = {}) {
+  let lastError = null;
+  for (const endpoint of PV14000_VENDOR_LIVE_ENDPOINTS) {
+    try {
+      const payload = await postFormJson(endpoint, { deviceId: PV14000_DEVICE_ID }, options);
+      const source = unwrap(payload);
+      const telemetryKeys = ["solarW", "solarWatts", "solarW1", "solarW2", "acOutW", "gridW", "heatSinkDegC", "fanSpeed"];
+      if (!telemetryKeys.some((key) => Object.prototype.hasOwnProperty.call(source, key))) {
+        const error = new Error("PV14000 logger is registered but has not returned its first telemetry frame yet");
+        error.code = "AWAITING_FIRST_DATA";
+        throw error;
+      }
+      return payload;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("PV14000 logger API is unavailable");
+}
+async function getPv14000Json(path, options = {}) {
+  if (PV14000_API_BASE) return getDashboardJson(PV14000_API_BASE, path, PV14000_USER, PV14000_PASSWORD, options);
+  if (!PV14000_DEVICE_ID) {
+    const error = new Error("PV14000 device ID is not configured");
+    error.code = "NOT_CONFIGURED";
+    throw error;
+  }
+  const url = new URL(path, "http://pv14000.local");
+  if (url.pathname === "/api/live") return getDirectPv14000Live(options);
+  if (url.pathname === "/api/energy") {
+    const period = ["T", "Y", "TM", "LM"].includes(url.searchParams.get("period")) ? url.searchParams.get("period") : "T";
+    return postFormJson(PV14000_VENDOR_ENERGY_ENDPOINT, { device: PV14000_DEVICE_ID, value: period }, options);
+  }
+  if (url.pathname === "/api/history") return { ok: true, dataNotes: "Master PostgreSQL stores PV14000 history", data: [] };
+  const error = new Error(`Unsupported direct PV14000 API path: ${url.pathname}`);
+  error.status = 404;
+  throw error;
+}
 const getPv9000Json = (path, options = {}) => getDashboardJson(PV9000_API_BASE, path, PV9000_USER, PV9000_PASSWORD, options);
 
 function normalizeSolarInverter(payload, config) {
@@ -602,10 +430,10 @@ function normalizeSolarInverter(payload, config) {
     solarW: solar,
     pv1W: first(s, ["pv1Watts", "solarW1", "pv1_power"]),
     pv2W: first(s, ["pv2Watts", "solarW2", "pv2_power"]),
-    pv1V: first(s, ["pv1Voltage", "pv1V"]),
-    pv2V: first(s, ["pv2Voltage", "pv2V"]),
-    pv1A: first(s, ["pv1Ampere", "pv1A"]),
-    pv2A: first(s, ["pv2Ampere", "pv2A"]),
+    pv1V: first(s, ["pv1Voltage", "pv1V", "solarV1"]),
+    pv2V: first(s, ["pv2Voltage", "pv2V", "solarV2"]),
+    pv1A: first(s, ["pv1Ampere", "pv1A", "solarA1"]),
+    pv2A: first(s, ["pv2Ampere", "pv2A", "solarA2"]),
     loadW: load,
     gridW: grid,
     gridV: first(s, ["gridVoltage", "gridV", "AC_in_Voltage"]),
@@ -957,7 +785,7 @@ function combine(pv14000, pv9000, matrix) {
       matrixPvInstalledW: 0,
       smartLoadSource: "pv9000",
       utilityGridSources: pv14000 ? ["pv14000", "pv9000"] : ["pv9000"],
-      pv14000Telemetry: pv14000 ? "online" : "logger-pending",
+      pv14000Telemetry: pv14000 ? "online" : PV14000_CONFIGURED ? "ready-awaiting-first-data" : "not-configured",
       pv9000Strings: 1,
       matrixExcludedFromUtilityGrid: true,
       matrixExcludedFromSiteDemand: PV9000_LOAD_INCLUDES_UPS,
@@ -984,7 +812,7 @@ function normalizeEnergy(payload, period = "T") {
 async function fetchEnergy(period = "T") {
   const safePeriod = ["T", "Y", "TM", "LM"].includes(period) ? period : "T";
   const tasks = [
-    PV14000_API_BASE ? getPv14000Json(`/api/energy?period=${encodeURIComponent(safePeriod)}`).then((p) => normalizeEnergy(p, safePeriod)) : Promise.resolve(null),
+    PV14000_CONFIGURED ? getPv14000Json(`/api/energy?period=${encodeURIComponent(safePeriod)}`).then((p) => normalizeEnergy(p, safePeriod)) : Promise.resolve(null),
     getPv9000Json(`/api/energy?period=${encodeURIComponent(safePeriod)}`).then((p) => normalizeEnergy(p, safePeriod)),
     getJson(`${MATRIX_API_BASE}/api/energy?period=${encodeURIComponent(safePeriod)}`).then((p) => normalizeEnergy(p, safePeriod))
   ];
@@ -1012,7 +840,7 @@ async function fetchEnergy(period = "T") {
 
   return {
     ok: Boolean(pv14000 || pv9000 || matrix),
-    complete: Boolean(pv9000 && matrix && (!PV14000_API_BASE || pv14000)),
+    complete: Boolean(pv9000 && matrix && (!PV14000_CONFIGURED || pv14000)),
     period: safePeriod,
     pv14000,
     pv9000,
@@ -1023,7 +851,7 @@ async function fetchEnergy(period = "T") {
       matrixEnergyExcludedFromSiteTotals: PV9000_LOAD_INCLUDES_UPS,
       matrixGridExcludedFromSiteTotals: true,
       smartLoadBelongsTo: "pv9000",
-      pv14000Telemetry: pv14000 ? "online" : "logger-pending",
+      pv14000Telemetry: pv14000 ? "online" : PV14000_CONFIGURED ? "ready-awaiting-first-data" : "not-configured",
       pv9000Strings: 1
     },
     errors: {
@@ -1037,6 +865,7 @@ async function fetchEnergy(period = "T") {
 function sourceHint(label, error) {
   if (!error) return null;
   if (error.code === "NOT_CONFIGURED") return `${label} API is not configured in Render.`;
+  if (error.code === "AWAITING_FIRST_DATA") return `${label} logger is ready; waiting for its first telemetry frame after installation.`;
   if (error.status === 401) return `${label} dashboard requires Basic Auth. Check its dashboard password in Render.`;
   return error.message;
 }
@@ -1083,7 +912,9 @@ async function wakeAllSources({ force = false } = {}) {
 
   wakeInFlight = (async () => {
     const checks = [
-      ["pv14000", Boolean(PV14000_API_BASE), () => getPv14000Json("/api/live?fresh=1", { timeoutMs: 14000 })],
+      ["pv14000", PV14000_CONFIGURED, () => PV14000_API_BASE
+        ? getPv14000Json("/api/live?fresh=1", { timeoutMs: 14000 })
+        : Promise.resolve({ configured: true, transport: PV14000_TRANSPORT })],
       ["pv9000", Boolean(PV9000_API_BASE), () => getPv9000Json("/api/live?fresh=1", { timeoutMs: 14000 })],
       ["matrix", Boolean(MATRIX_API_BASE), () => getJson(`${MATRIX_API_BASE}/api/matrix`, { timeoutMs: 14000 })],
       ["tuya", Boolean(TUYA_API_BASE), () => getJson(`${TUYA_API_BASE}/api/meter`, { timeoutMs: 14000 })]
@@ -1246,14 +1077,18 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
   const systems = {};
   const errors = {};
   const [aResult, bResult, uResult, tResult] = await Promise.allSettled([
-    PV14000_API_BASE ? getPv14000Json("/api/live?fresh=1").then(normalizePv14000) : Promise.resolve(null),
+    PV14000_CONFIGURED ? getPv14000Json("/api/live?fresh=1").then(normalizePv14000) : Promise.resolve(null),
     getPv9000Json("/api/live?fresh=1").then(normalizePv9000),
     getJson(`${MATRIX_API_BASE}/api/matrix`).then(normalizeMatrixUps),
     getJson(`${TUYA_API_BASE}/api/meter`).then(normalizeTuyaMeter)
   ]);
 
-  if (aResult.status === "fulfilled" && aResult.value) systems.pv14000 = aResult.value;
-  else if (PV14000_API_BASE && aResult.status === "rejected") errors.pv14000 = sourceHint("PV14000", aResult.reason);
+  if (aResult.status === "fulfilled" && aResult.value) {
+    systems.pv14000 = aResult.value;
+    pv14000HasConnected = true;
+  } else if (PV14000_CONFIGURED && aResult.status === "rejected") {
+    errors.pv14000 = sourceHint("PV14000", aResult.reason);
+  }
   if (bResult.status === "fulfilled") systems.pv9000 = bResult.value;
   else errors.pv9000 = sourceHint("PV9000", bResult.reason);
   if (uResult.status === "fulfilled") systems.matrix = uResult.value;
@@ -1297,7 +1132,9 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
     },
     topology: systems.combined.topology,
     telemetryPlan: {
-      pv14000: PV14000_API_BASE ? "configured" : "waiting-for-new-wifi-logger",
+      pv14000: systems.pv14000 ? "live" : PV14000_CONFIGURED ? (pv14000HasConnected ? "temporarily-offline" : "ready-awaiting-first-data") : "not-configured",
+      pv14000Transport: PV14000_TRANSPORT,
+      pv14000Device: PV14000_DEVICE_ID ? `••••${PV14000_DEVICE_ID.slice(-4)}` : null,
       pv9000: "reassigned-wifi-logger",
       pv9000Strings: 1,
       pv9000Panels: 8,
@@ -1393,7 +1230,7 @@ async function fetchHistory(hours = 24) {
   const stored = await dbHistory(hours);
   if (stored) return stored;
   const [aResult, bResult, uResult] = await Promise.allSettled([
-    PV14000_API_BASE ? getPv14000Json(`/api/history?hours=${hours}`) : Promise.resolve(null),
+    PV14000_CONFIGURED ? getPv14000Json(`/api/history?hours=${hours}`) : Promise.resolve(null),
     getPv9000Json(`/api/history?hours=${hours}`),
     getJson(`${MATRIX_API_BASE}/api/history?hours=${hours}`)
   ]);
@@ -1787,7 +1624,7 @@ function buildLiveAlerts(live) {
   const s = live?.systems || {};
   const a = s.pv14000 || null, b = s.pv9000 || null, u = s.matrix || null, c = s.combined || {};
   const m = live?.meter || null;
-  if (PV14000_API_BASE && !a) add("pv14000-offline", "critical", "PV14000 OFFLINE", "Fronus Meta 10 kW telemetry is unavailable.", "Check the new inverter Wi-Fi/API path.");
+  if (PV14000_CONFIGURED && pv14000HasConnected && !a) add("pv14000-offline", "warning", "PV14000 LOGGER OFFLINE", "The dedicated PV14000 logger stopped returning telemetry after connecting successfully.", "Check PV14000 power, Wi-Fi and logger seating.");
   if (PV9000_API_BASE && !b) add("pv9000-offline", "warning", "PV9000 OFFLINE", "Fronus Meta 6 kW telemetry is unavailable.", "Check inverter Wi-Fi and PV9000 API service.");
   if (!u) add("matrix-offline", "critical", "MATRIX UPS OFFLINE", "Matrix UPS telemetry is unavailable.", "Check UPS communication before maintenance decisions.");
   if (!m?.online) add("tuya-offline", "critical", "TUYA GRID METER OFFLINE", "Physical utility meter data is unavailable, so grid guardrails cannot be trusted.", "Check Tuya cloud/device connectivity.");
@@ -1899,7 +1736,7 @@ async function buildAiTelemetryContext() {
     topology: {
       installedPvKw: TOTAL_PV_INSTALLED_W / 1000,
       monitoredPvKw: CURRENT_MONITORED_PV_W / 1000,
-      pv14000: PV14000_API_BASE ? "Fronus Meta 10kW, 6.78 kWp PV; telemetry configured" : "Fronus Meta 10kW, 6.78 kWp physically installed; new WiFi logger pending; intentionally excluded from live totals",
+      pv14000: PV14000_CONFIGURED ? "Fronus Meta 10kW, 6.78 kWp PV; dedicated WiFi logger configured; automatically included when live" : "Fronus Meta 10kW, 6.78 kWp PV; telemetry not configured",
       pv9000: "Fronus Meta 6kW; one active string of 8 × 545 W = 4.36 kWp; reassigned WiFi logger; feeds Matrix UPS and Smart Load",
       matrix: "Fronus Matrix 6kW used as PV-less UPS",
       physicalMeter: "Tuya grid meter",
@@ -2078,8 +1915,8 @@ async function askSolarAi(message, history) {
 
 Rules:
 - Use the TELEMETRY SNAPSHOT below as the source of truth for current readings. If a source is offline/stale/missing, say that clearly and do not invent a value.
-- Understand the current topology: PV9000 is the only live-monitored solar inverter and uses one string of 8 × 545 W panels (4.36 kWp). Its WiFi logger was reassigned from PV14000. PV14000 remains physically installed at 6.78 kWp but is intentionally excluded from live totals until a new logger is installed. PV9000 feeds the Matrix UPS; Matrix is PV-less; Tuya is the independent physical utility meter.
-- Never describe PV14000 as failed or offline when its logger is unconfigured; say "logger pending" or "intentionally unmonitored". Physical installed PV is 11.14 kWp, while currently monitored PV is 4.36 kWp.
+- Understand the current topology: PV9000 uses one string of 8 × 545 W panels (4.36 kWp) and its reassigned WiFi logger. PV14000 has 6.78 kWp and a newly configured dedicated logger. Together they provide 11.14 kWp of monitored PV when both feeds are live. PV9000 feeds the Matrix UPS; Matrix is PV-less; Tuya is the independent physical utility meter.
+- Before PV14000 sends its first frame, describe it as "logger ready — awaiting first data", not failed. After it has connected, report a later loss as a logger connectivity issue. Do not invent PV14000 readings while its feed is absent.
 - Matrix downstream load can already be included in PV9000 load, so do not double-count it.
 - Tuya Consumption means grid import and Generate means grid export when that direction is confirmed.
 - The dashboard's guardrails are monitoring targets, not automatic control: night import 5 kW and day export 6 kW unless telemetry config says otherwise.
@@ -2135,6 +1972,8 @@ function staticPath(urlPath) {
   return abs.startsWith(root) ? abs : null;
 }
 
+export { normalizeDeviceId, normalizePv14000, normalizeEnergy };
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
@@ -2149,82 +1988,6 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, stored, updatedAt: live.updatedAt, history: await historyStats() });
     }
     if (url.pathname === "/api/master/analytics") return json(res, 200, await fetchAnalytics());
-    if (url.pathname === "/api/master/powersmart/status") {
-      const session = powerSmartSession(req);
-      return json(res, 200, powerSmartPublicState(session));
-    }
-    if (url.pathname === "/api/master/powersmart/data") {
-      const session = powerSmartSession(req);
-      if (!session) return json(res, 401, { ok: false, connected: false, error: "Connect your Power Smart account first." });
-      return json(res, 200, await powerSmartFetch(session, { force: url.searchParams.get("fresh") === "1" }));
-    }
-    if (url.pathname === "/api/master/powersmart/daily") {
-      const session = powerSmartSession(req);
-      if (!session) return json(res, 401, { ok: false, connected: false, error: "Connect your Power Smart account first." });
-      return json(res, 200, await powerSmartFetchDaily(session, { force: url.searchParams.get("fresh") === "1" }));
-    }
-    if (url.pathname === "/api/master/powersmart/connect") {
-      if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
-      if (!powerSmartSameOrigin(req)) return json(res, 403, { ok: false, error: "Invalid request origin." });
-      const rate = powerSmartConsumeSignIn(req);
-      if (!rate.ok) {
-        res.setHeader("Retry-After", String(rate.retryAfterSeconds));
-        return json(res, 429, { ok: false, error: "Too many sign-in attempts. Please wait before trying again." });
-      }
-      const body = await readJsonBody(req, 16_384);
-      const email = String(body?.email || "").trim().slice(0, 160);
-      const cnic = powerSmartCleanRef(body?.cnic);
-      const password = String(body?.password || "");
-      if (!email || !password) return json(res, 400, { ok: false, error: "Power Smart email and password are required." });
-      if (password.length > 256) return json(res, 400, { ok: false, error: "Invalid password length." });
-      const signedIn = await powerSmartSignIn(email, cnic, password);
-      const selected = signedIn.meters.find((m) => m.isDefault) || signedIn.meters[0];
-      const id = randomBytes(32).toString("base64url");
-      const session = {
-        token: signedIn.token,
-        accountName: signedIn.accountName,
-        meters: signedIn.meters,
-        selectedMeterId: selected.id,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + POWER_SMART_SESSION_MS,
-        lastFetchAt: 0,
-        cache: null,
-        dailyLastFetchAt: 0,
-        dailyCache: null
-      };
-      powerSmartSessions.set(id, session);
-      powerSmartSignInAttempts.delete(aiClientIp(req));
-      powerSmartSetCookie(req, res, id);
-      let data = null;
-      let dataError = null;
-      try { data = await powerSmartFetch(session, { force: true }); }
-      catch (error) { dataError = String(error.message || error).slice(0, 260); }
-      return json(res, 200, { ...powerSmartPublicState(session), data, dataError });
-    }
-    if (url.pathname === "/api/master/powersmart/select-meter") {
-      if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
-      if (!powerSmartSameOrigin(req)) return json(res, 403, { ok: false, error: "Invalid request origin." });
-      const session = powerSmartSession(req);
-      if (!session) return json(res, 401, { ok: false, connected: false, error: "Power Smart session expired. Sign in again." });
-      const body = await readJsonBody(req, 4096);
-      const meterId = String(body?.meterId || "").slice(0, 20);
-      if (!session.meters.some((m) => m.id === meterId)) return json(res, 400, { ok: false, error: "That meter is not registered on this account." });
-      session.selectedMeterId = meterId;
-      session.cache = null;
-      session.lastFetchAt = 0;
-      session.dailyCache = null;
-      session.dailyLastFetchAt = 0;
-      const data = await powerSmartFetch(session, { force: true });
-      return json(res, 200, { ...powerSmartPublicState(session), data });
-    }
-    if (url.pathname === "/api/master/powersmart/disconnect") {
-      if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
-      if (!powerSmartSameOrigin(req)) return json(res, 403, { ok: false, error: "Invalid request origin." });
-      const id = powerSmartCookieMap(req).rf_ps;
-      if (id) powerSmartSessions.delete(id);
-      powerSmartSetCookie(req, res, "", 0);
-      return json(res, 200, { ok: true, connected: false });
-    }
     if (url.pathname === "/api/master/ai/status") return json(res, 200, aiStatus());
     if (url.pathname === "/api/master/ai/chat") {
       if (req.method !== "POST") return json(res, 405, { ok: false, error: "POST required" });
@@ -2291,13 +2054,19 @@ const server = http.createServer(async (req, res) => {
     }));
     if (url.pathname === "/api/health") return json(res, 200, {
       success: true,
-      service: "Raja Fraz Master Solar Command Center - V39 Daily Power Smart",
-      pv14000: { base: PV14000_API_BASE || null, configured: Boolean(PV14000_API_BASE), state: PV14000_API_BASE ? "configured" : "waiting-for-new-wifi-logger", authConfigured: Boolean(PV14000_PASSWORD) },
+      service: "Raja Fraz Master Solar Command Center - V38 Dual Logger",
+      pv14000: {
+        base: PV14000_API_BASE || null,
+        configured: PV14000_CONFIGURED,
+        transport: PV14000_TRANSPORT,
+        device: PV14000_DEVICE_ID ? `••••${PV14000_DEVICE_ID.slice(-4)}` : null,
+        state: pv14000HasConnected ? "connected" : PV14000_CONFIGURED ? "ready-awaiting-first-data" : "not-configured",
+        authConfigured: PV14000_API_BASE ? Boolean(PV14000_PASSWORD) : null
+      },
       pv9000: { base: PV9000_API_BASE || null, configured: Boolean(PV9000_API_BASE), authConfigured: Boolean(PV9000_PASSWORD) },
       matrix: { base: MATRIX_API_BASE, configured: Boolean(MATRIX_API_BASE), role: "UPS", pvInstalledW: 0 },
       capacities: { pv14000PvW: PV14000_PV_INSTALLED_W, pv14000AcW: PV14000_AC_CAPACITY_W, pv9000PvW: PV9000_PV_INSTALLED_W, pv9000AcW: PV9000_AC_CAPACITY_W, matrixAcW: MATRIX_AC_CAPACITY_W, totalPvW: TOTAL_PV_INSTALLED_W, monitoredPvW: CURRENT_MONITORED_PV_W },
-      topology: { pv9000FeedsMatrix: true, matrixIsUps: true, smartLoadSource: "PV9000", pv9000Strings: 1, pv9000Panels: 8, pv9000PanelWatts: 545, pv14000Telemetry: PV14000_API_BASE ? "configured" : "logger-pending", pv9000LoadIncludesUps: PV9000_LOAD_INCLUDES_UPS, pv9000LoadIncludesSmart: PV9000_LOAD_INCLUDES_SMART },
-      powerSmart: { configured: true, accountApi: POWER_SMART_APP_BASE, dailyMdmAuthorized: Boolean(POWER_SMART_MDM_PRIVATE_KEY), sessionHours: POWER_SMART_SESSION_HOURS, instantMdmEmbedded: false, mode: "owner-account-session" },
+      topology: { pv9000FeedsMatrix: true, matrixIsUps: true, smartLoadSource: "PV9000", pv9000Strings: 1, pv9000Panels: 8, pv9000PanelWatts: 545, pv14000Telemetry: PV14000_CONFIGURED ? "configured" : "not-configured", pv9000LoadIncludesUps: PV9000_LOAD_INCLUDES_UPS, pv9000LoadIncludesSmart: PV9000_LOAD_INCLUDES_SMART },
       intelligence: { nightImportLimitW: NIGHT_IMPORT_LIMIT_W, dayExportLimitW: DAY_EXPORT_LIMIT_W, dayModeStart: DAY_MODE_START, dayModeEnd: DAY_MODE_END, batteryCapacityKwh: BATTERY_CAPACITY_KWH || null, exportRatePkr: EXPORT_RATE },
       ai: { ...aiProviderState(), configured: Boolean(GEMINI_API_KEY || OPENAI_API_KEY), pinRequired: Boolean(AI_ACCESS_PIN), readOnly: true },
       notifications: await notificationStatus(),
@@ -2320,24 +2089,27 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-await initDb();
-server.listen(PORT, () => {
-  console.log(`Raja Fraz Three-Inverter Master Dashboard running on ${PORT}`);
-  // Start waking dependencies as soon as Master itself is awake. The browser's
-  // /api/master/wake call reuses this same in-flight promise.
-  const timer = setTimeout(() => {
-    wakeAllSources().catch((error) => console.error("Source wake-up:", error.message));
-  }, 500);
-  timer.unref?.();
-});
+const isMain = process.argv[1] && resolve(process.argv[1]) === __filename;
+if (isMain) {
+  await initDb();
+  server.listen(PORT, () => {
+    console.log(`Raja Fraz Three-Inverter Master Dashboard running on ${PORT}`);
+    // Start waking dependencies as soon as Master itself is awake. The browser's
+    // /api/master/wake call reuses this same in-flight promise.
+    const timer = setTimeout(() => {
+      wakeAllSources().catch((error) => console.error("Source wake-up:", error.message));
+    }, 500);
+    timer.unref?.();
+  });
 
-setInterval(async () => {
-  try {
-    if (!dbReady) await initDb();
-    const current = await fetchLive({ store: false, cacheMs: 0 });
-    if (dbReady) await storeSample(current);
-    evaluateAndNotify(current).catch((error) => console.error("Notification monitor:", error.message));
-  } catch (error) {
-    console.error("Background collector:", error.message);
-  }
-}, HISTORY_SAMPLE_SECONDS * 1000).unref();
+  setInterval(async () => {
+    try {
+      if (!dbReady) await initDb();
+      const current = await fetchLive({ store: false, cacheMs: 0 });
+      if (dbReady) await storeSample(current);
+      evaluateAndNotify(current).catch((error) => console.error("Notification monitor:", error.message));
+    } catch (error) {
+      console.error("Background collector:", error.message);
+    }
+  }, HISTORY_SAMPLE_SECONDS * 1000).unref();
+}

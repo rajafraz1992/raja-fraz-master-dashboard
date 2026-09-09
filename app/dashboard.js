@@ -1,15 +1,16 @@
 const $ = (id) => document.getElementById(id);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
-const $q = (sel) => document.querySelector(sel);
 const COLORS = {
   solar:'#f6b526', load:'#357be8', grid:'#18a96b', import:'#ef4655', smart:'#f68b22',
   pv14000:'#2f7bf0', pv9000:'#7657f2', matrix:'#0aa6a6', battery:'#21a86a', combined:'#082b43'
 };
 const PHYSICAL_PV_CAPACITY_W = 11140;
-const MONITORED_PV_CAPACITY_W = 4360;
-const MONITORED_SOLAR_KWP = 4.36;
-const MONITORED_SYSTEM_COUNT = 2; // PV9000 + Matrix
-const MONITORED_SOURCE_COUNT = 3; // PV9000 + Matrix + Tuya physical meter
+const MONITORED_PV_CAPACITY_W = 11140;
+const MONITORED_SOLAR_KWP = 11.14;
+const PV14000_SOLAR_KWP = 6.78;
+const PV9000_SOLAR_KWP = 4.36;
+const MONITORED_SYSTEM_COUNT = 3; // PV14000 + PV9000 + Matrix
+const MONITORED_SOURCE_COUNT = 4; // both solar inverters + Matrix + Tuya
 let live = null;
 let history = { pv14000: [], pv9000: [], matrix: [], combined: [], storage: 'loading', samples: 0 };
 let activeHours = 24;
@@ -32,12 +33,6 @@ let ultraLastState = null;
 let toolsInitialized = false;
 let toolsSeededFromLive = false;
 let toolHasSavedPrefs = false;
-let powerSmartState = { connected:false };
-let powerSmartData = null;
-let powerSmartDailyData = null;
-let powerSmartMode = 'daily';
-let powerSmartDayRange = 30;
-let powerSmartBusy = false;
 
 function set(id, value) { const el = $(id); if (el) el.textContent = value; }
 function uiIcon(name, cls='') { return `<svg class="uiIcon ${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`; }
@@ -62,6 +57,13 @@ function monitoredPvCapacityW(){const api=finite(live?.capacities?.monitoredPvW)
 function monitoredSolarKwp(){return monitoredPvCapacityW()/1000;}
 function monitoredSystemTarget(){return Math.max(MONITORED_SYSTEM_COUNT,finite(live?.totalSystems,MONITORED_SYSTEM_COUNT));}
 function monitoredSourceTarget(){return monitoredSystemTarget()+1;}
+function pv14000ConnectionState(a=live?.systems?.pv14000){
+  if(a)return{online:true,pending:false,label:'ONLINE',detail:ageText(a.updatedAt),code:'live'};
+  const code=String(live?.telemetryPlan?.pv14000||'ready-awaiting-first-data');
+  if(code==='temporarily-offline')return{online:false,pending:false,label:'LOGGER OFFLINE',detail:'Dedicated logger connection interrupted',code};
+  if(code==='not-configured')return{online:false,pending:false,label:'NOT CONFIGURED',detail:'PV14000 logger mapping is missing',code};
+  return{online:false,pending:true,label:'LOGGER READY',detail:'Awaiting first data after plug-in',code};
+}
 function fmtPower(v) { const n=finite(v); const a=Math.abs(n); return a>=1000?`${(a/1000).toFixed(2)} kW`:`${Math.round(a)} W`; }
 function fmtSignedPower(v) { const n=finite(v); const sign=n<0?'−':''; const a=Math.abs(n); return a>=1000?`${sign}${(a/1000).toFixed(2)} kW`:`${sign}${Math.round(a)} W`; }
 function fmtKwh(v) { return `${finite(v).toFixed(2)} kWh`; }
@@ -95,25 +97,17 @@ function classFromPct(p){return p>=100?'danger':p>=80?'warn':'good';}
 function updateAlertBadge(){set('alertCount',String(connectionAlertCount+smartAlertCount));}
 setInterval(clock,1000); clock();
 
-function activateDashboardView(button){
-  if(!button)return;
+$$('.navtab').forEach((button)=>button.addEventListener('click',()=>{
   $$('.navtab').forEach((b)=>b.classList.toggle('active',b===button));
   $$('.view').forEach((v)=>v.classList.remove('active'));
   $(button.dataset.view)?.classList.add('active');
-  $$('.mobileDock [data-mobile-view]').forEach((b)=>b.classList.toggle('active',b.dataset.mobileView===button.dataset.view||(b.dataset.mobileView==='command'&&button.dataset.view==='mission')));
   const isControl=button.dataset.view==='mission';document.body.classList.toggle('controlRoomActive',isControl);
   if(!isControl&&document.body.classList.contains('controlFocusMode'))setControlFocus(false);
-  try{window.history.replaceState(null,'',`${location.pathname}?view=${encodeURIComponent(button.dataset.view)}`);}catch(_error){}
   requestAnimationFrame(drawAll);
-}
-$$('.navtab').forEach((button)=>button.addEventListener('click',()=>activateDashboardView(button)));
-$$('.mobileDock [data-mobile-view]').forEach((button)=>button.addEventListener('click',()=>{
-  const target=$q(`.navtab[data-view="${button.dataset.mobileView}"]`);if(target)activateDashboardView(target);window.scrollTo({top:0,behavior:'smooth'});
 }));
 const requestedView=new URLSearchParams(location.search).get('view');
-if(requestedView&&$(requestedView)){const btn=$q(`.navtab[data-view="${requestedView.replace(/[^a-z0-9_-]/gi,'')}"]`);if(btn)btn.click();}
-else if(matchMedia('(max-width:700px) and (orientation:portrait)').matches){$q('.navtab[data-view="command"]')?.click();}
-$('ultraRibbonOpen')?.addEventListener('click',()=>{$q('.navtab[data-view="mission"]')?.click();window.scrollTo({top:0,behavior:'smooth'});});
+if(requestedView&&$(requestedView)){const btn=$(`.navtab[data-view="${requestedView.replace(/[^a-z0-9_-]/gi,'')}"]`);if(btn)btn.click();}
+$('ultraRibbonOpen')?.addEventListener('click',()=>{$('.navtab[data-view="mission"]')?.click();window.scrollTo({top:0,behavior:'smooth'});});
 $('ultraFullscreen')?.addEventListener('click',async()=>{try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen();}catch(_error){}});
 
 $$('.rangeButtons button').forEach((button)=>button.addEventListener('click',()=>{
@@ -180,7 +174,8 @@ function renderAiLiveContext(){
   const c=live?.systems?.combined||{};const meter=live?.meter;
   const connected=finite(live?.connected);const solar=fmtPower(c.solarW);const demand=fmtPower(c.siteDemandW);
   const grid=meter?.online?`${meter.mode||'UNKNOWN'} ${fmtPower(meter.powerW)}`:'Tuya offline';
-  set('aiContextSummary',`${connected}/${monitoredSystemTarget()} live systems • Monitored solar ${solar} • Demand ${demand} • Grid ${grid} • ${live?.systems?.pv14000?'PV14000 live':'PV14000 logger pending'}`);
+  const pv14000State=pv14000ConnectionState();
+  set('aiContextSummary',`${connected}/${monitoredSystemTarget()} live systems • Monitored solar ${solar} • Demand ${demand} • Grid ${grid} • PV14000 ${pv14000State.online?'live':pv14000State.label.toLowerCase()}`);
 }
 async function loadAiStatus(){
   try{
@@ -400,80 +395,6 @@ async function loadWeather(){
   try{const r=await fetch('/api/master/weather',{cache:'no-store'});const w=await r.json();const d=w.data||{};const t=d.temperature??d.temperature_2m??d.current?.temperature_2m;if(Number.isFinite(Number(t)))set('weather',`☁ ${Math.round(Number(t))}° Gujrat`);}catch(_error){}
 }
 
-function powerSmartMessage(id,text='',kind='error'){
-  const box=$(id);if(!box)return;box.hidden=!text;box.textContent=text;box.classList.toggle('ok',kind==='ok');
-}
-function powerSmartSetBusy(busy,label='Connecting…'){
-  powerSmartBusy=busy;const button=$('powerSmartConnectButton');if(button){button.disabled=busy;button.textContent=busy?label:'Connect official account';}
-  ['powerSmartRefresh','powerSmartReload','powerSmartDisconnect','powerSmartMeterSelect','powerSmartDailyTab','powerSmartMonthlyTab','powerSmartDayRange'].forEach(id=>{const el=$(id);if(el)el.disabled=busy;});
-}
-function powerSmartSessionText(expiresAt){
-  if(!expiresAt)return'--';const ms=new Date(expiresAt).getTime()-Date.now();if(!Number.isFinite(ms)||ms<=0)return'EXPIRED';const hours=Math.floor(ms/3600000),minutes=Math.max(0,Math.floor(ms%3600000/60000));return hours?`${hours}h ${minutes}m`:`${minutes} min`;
-}
-function renderPowerSmartState(){
-  const connected=Boolean(powerSmartState?.connected);const login=$('powerSmartLoginPanel'),panel=$('powerSmartConnectedPanel');if(login)login.hidden=connected;if(panel)panel.hidden=!connected;
-  set('powerSmartStatus',connected?'CONNECTED':'NOT CONNECTED');$('powerSmartStatus')?.classList.toggle('connected',connected);set('powerSmartNavState',connected?'LIVE':'NEW');
-  set('powerSmartFreshness',connected?(powerSmartState.lastFetchAt?`Updated ${ageText(powerSmartState.lastFetchAt)}`:'Account connected'):'Sign in once per server session');
-  if(!connected)return;
-  set('powerSmartAccountName',powerSmartState.accountName||'Power Smart User');set('powerSmartMeterRef',powerSmartState.selectedMeterRef||'Meter');set('powerSmartCategory',powerSmartState.selectedCategory||'--');set('powerSmartSession',powerSmartSessionText(powerSmartState.expiresAt));
-  const select=$('powerSmartMeterSelect');if(select){const selected=powerSmartState.selectedMeterId;select.replaceChildren();for(const meter of powerSmartState.meters||[]){const option=document.createElement('option');option.value=meter.id;option.textContent=`${meter.refMasked}${meter.isDefault?' • default':''}${meter.category?` • ${meter.category}`:''}`;option.selected=meter.id===selected;select.appendChild(option);}}
-}
-function renderPowerSmartBars(rows=[]){
-  const box=$('powerSmartBars');if(!box)return;box.replaceChildren();const usable=rows.filter(row=>Number.isFinite(Number(row.kwh))).slice(-12);if(!usable.length){const empty=document.createElement('div');empty.className='powerSmartEmpty';empty.textContent='PITC connected, but no monthly consumption rows were returned for this meter.';box.appendChild(empty);return;}
-  const max=Math.max(1,...usable.map(row=>Number(row.kwh)));for(const row of usable){const bar=document.createElement('div');bar.className='powerSmartBar';const value=document.createElement('b');value.textContent=`${Number(row.kwh).toFixed(1)} kWh`;const column=document.createElement('i');column.style.setProperty('--bar-height',`${Math.max(4,Number(row.kwh)/max*100)}%`);const label=document.createElement('span');label.textContent=[row.label,row.year].filter(Boolean).join(' ');bar.append(value,column,label);box.appendChild(bar);}
-}
-function powerSmartFormatDailyValue(value){return Number(value||0).toFixed(Number(value||0)%1?2:0);}
-function renderPowerSmartDaily(rows=[]){
-  const chart=$('powerSmartDailyChart'),body=$('powerSmartDailyRows');if(!chart||!body)return;chart.replaceChildren();body.replaceChildren();
-  const usable=rows.filter(row=>row&&row.label).slice(-powerSmartDayRange);if(!usable.length){const empty=document.createElement('div');empty.className='powerSmartEmpty';empty.textContent=powerSmartState.dailyMdmAvailable?'PITC returned no daily records for this meter.':'Daily import/export is a separate PITC MDM feed and is not authorized on this server yet.';chart.appendChild(empty);const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=6;td.textContent=empty.textContent;tr.appendChild(td);body.appendChild(tr);return;}
-  const max=Math.max(1,...usable.flatMap(row=>[Number(row.importKwh)||0,Number(row.exportKwh)||0]));
-  for(const row of usable){const col=document.createElement('div');col.className='powerSmartDailyColumn';col.title=`${row.label} • Import ${Number(row.importKwh||0).toFixed(2)} kWh • Export ${Number(row.exportKwh||0).toFixed(2)} kWh`;
-    const positive=document.createElement('div');positive.className='powerSmartDailyHalf import';const ip=document.createElement('i');ip.className='importPeak';ip.style.height=`${Math.max(0,Number(row.importPeakKwh||0)/max*88)}%`;const io=document.createElement('i');io.className='importOff';io.style.height=`${Math.max(0,Number(row.importOffPeakKwh||0)/max*88)}%`;positive.append(io,ip);
-    const negative=document.createElement('div');negative.className='powerSmartDailyHalf export';const eo=document.createElement('i');eo.className='exportOff';eo.style.height=`${Math.max(0,Number(row.exportOffPeakKwh||0)/max*88)}%`;const ep=document.createElement('i');ep.className='exportPeak';ep.style.height=`${Math.max(0,Number(row.exportPeakKwh||0)/max*88)}%`;negative.append(eo,ep);
-    const label=document.createElement('span');label.textContent=row.label;col.append(positive,negative,label);chart.appendChild(col);}
-  for(const row of [...usable].reverse()){const tr=document.createElement('tr');const values=[row.label,powerSmartFormatDailyValue(row.importPeakKwh),powerSmartFormatDailyValue(row.importOffPeakKwh),powerSmartFormatDailyValue(row.exportPeakKwh),powerSmartFormatDailyValue(row.exportOffPeakKwh),`${Number(row.netKwh||0)>=0?'I':'E'} ${Math.abs(Number(row.netKwh||0)).toFixed(1)}`];for(const value of values){const td=document.createElement('td');td.textContent=value;tr.appendChild(td);}body.appendChild(tr);}
-}
-function setPowerSmartMode(mode){
-  powerSmartMode=mode==='monthly'?'monthly':'daily';const daily=powerSmartMode==='daily';$('powerSmartDailyPanel').hidden=!daily;$('powerSmartMonthlyPanel').hidden=daily;$('powerSmartDayRange').closest('label').hidden=!daily;
-  for(const id of ['powerSmartDailyTab','powerSmartMonthlyTab']){const button=$(id),active=button?.dataset.mode===powerSmartMode;button?.classList.toggle('active',active);button?.setAttribute('aria-selected',String(active));}
-  set('powerSmartHistoryTitle',daily?'Daily Import / Export':'Monthly Power Smart History');renderPowerSmartData();
-}
-function renderPowerSmartData(){
-  const daily=powerSmartMode==='daily';renderPowerSmartBars(powerSmartData?.history||[]);renderPowerSmartDaily(powerSmartDailyData?.history||[]);
-  if(daily){const latest=powerSmartDailyData?.latest;const net=Number(latest?.netKwh||0);set('powerSmartPrimaryKpiLabel','LATEST DAILY NET');set('powerSmartCurrentKwh',latest?`${net>=0?'IMPORT':'EXPORT'} ${Math.abs(net).toFixed(2)} kWh`:'--');set('powerSmartCurrentLabel',latest?.label||'Official daily data unavailable');set('powerSmartRecordCount',String(powerSmartDailyData?.records??0));set('powerSmartRecordCaption','Daily records returned');set('powerSmartDataSource',powerSmartDailyData?.source||'PITC daily MDM');set('powerSmartCompareTitle','Official daily import / export');set('powerSmartCompareCaption','Peak and off-peak • registered account meter');}
-  else{const current=powerSmartData?.current||powerSmartData?.latest;set('powerSmartPrimaryKpiLabel','CURRENT / LATEST UNITS');set('powerSmartCurrentKwh',current?.kwh==null?'--':`${Number(current.kwh).toFixed(2)} kWh`);set('powerSmartCurrentLabel',current?.label||'Latest official record');set('powerSmartRecordCount',String(powerSmartData?.records??0));set('powerSmartRecordCaption','Monthly records returned');set('powerSmartDataSource','PITC account API');set('powerSmartCompareTitle','Official account consumption');set('powerSmartCompareCaption','Monthly / billing-oriented • owner login');}
-  const updated=daily?powerSmartDailyData?.refreshedAt:powerSmartData?.refreshedAt;set('powerSmartUpdated',updated?new Date(updated).toLocaleString('en-PK',{timeZone:'Asia/Karachi'}):'--');renderPowerSmartComparison();
-}
-function renderPowerSmartComparison(){
-  const meter=live?.meter||null,c=live?.systems?.combined||{};const physical=meterSignedW(meter);set('powerSmartTuyaPower',physical==null?'OFFLINE':fmtGridSigned(physical));set('powerSmartTuyaMode',meter?.online?`${meter.mode||'LIVE'} • ${ageText(meter.updatedAt)}`:'Independent physical meter unavailable');set('powerSmartTuyaDetail',physical==null?'Tuya meter unavailable':`${fmtGridSigned(physical)} • ${finite(meter.voltage).toFixed(1)} V`);set('powerSmartInverterDetail',live?fmtGridSigned(finite(c.gridW)):'Waiting for PV9000');
-}
-async function loadPowerSmartStatus(){
-  try{const response=await fetch('/api/master/powersmart/status',{cache:'no-store',credentials:'same-origin'});const data=await response.json();powerSmartState=data;renderPowerSmartState();if(data.connected)await loadPowerSmartData(false);}catch(error){powerSmartState={connected:false};renderPowerSmartState();powerSmartMessage('powerSmartLoginMessage',`Power Smart bridge unavailable: ${error.message}`);}
-}
-async function loadPowerSmartData(force=false){
-  if(!powerSmartState.connected||powerSmartBusy)return;powerSmartSetBusy(true,'Loading…');powerSmartMessage('powerSmartDataMessage','');
-  try{const suffix=force?'?fresh=1':'';const monthlyPromise=fetch(`/api/master/powersmart/data${suffix}`,{cache:'no-store',credentials:'same-origin'});const dailyPromise=powerSmartState.dailyMdmAvailable?fetch(`/api/master/powersmart/daily${suffix}`,{cache:'no-store',credentials:'same-origin'}):null;const monthlyResponse=await monthlyPromise;const monthly=await monthlyResponse.json();if(!monthlyResponse.ok||!monthly.ok)throw Object.assign(new Error(monthly.error||'Power Smart data failed'),{status:monthlyResponse.status});powerSmartData=monthly;
-    let dailyError='';if(dailyPromise){const dailyResponse=await dailyPromise;const dailyData=await dailyResponse.json();if(dailyResponse.ok&&dailyData.ok)powerSmartDailyData=dailyData;else dailyError=dailyData.error||'Official daily records are unavailable.';}else dailyError='Daily view is ready, but PITC MDM daily authorization is not configured on the server.';
-    powerSmartState={...powerSmartState,lastFetchAt:Date.now()};renderPowerSmartState();renderPowerSmartData();powerSmartMessage('powerSmartDataMessage',dailyError||(force?'Daily and monthly records refreshed.':''),dailyError?'error':'ok');}
-  catch(error){if(error.status===401){powerSmartState={connected:false};powerSmartData=null;renderPowerSmartState();}else powerSmartMessage('powerSmartDataMessage',error.message);}
-  finally{powerSmartSetBusy(false);}
-}
-async function connectPowerSmart(event){
-  event?.preventDefault();if(powerSmartBusy)return;const email=$('powerSmartEmail')?.value.trim(),password=$('powerSmartPassword')?.value||'',cnic=$('powerSmartCnic')?.value.trim()||'';powerSmartMessage('powerSmartLoginMessage','');powerSmartSetBusy(true);
-  try{const response=await fetch('/api/master/powersmart/connect',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,cnic})});const data=await response.json();if(!response.ok||!data.connected)throw new Error(data.error||'Power Smart sign-in failed.');powerSmartState=data;powerSmartData=data.data||null;powerSmartDailyData=null;if($('powerSmartPassword'))$('powerSmartPassword').value='';renderPowerSmartState();renderPowerSmartData();setTimeout(()=>loadPowerSmartData(false),0);if(data.dataError)powerSmartMessage('powerSmartDataMessage',`Account connected. Consumption feed: ${data.dataError}`);}
-  catch(error){if($('powerSmartPassword'))$('powerSmartPassword').value='';powerSmartMessage('powerSmartLoginMessage',error.message);}
-  finally{powerSmartSetBusy(false);}
-}
-async function selectPowerSmartMeter(){
-  if(powerSmartBusy)return;const meterId=$('powerSmartMeterSelect')?.value;if(!meterId)return;powerSmartSetBusy(true,'Switching…');powerSmartMessage('powerSmartDataMessage','');try{const response=await fetch('/api/master/powersmart/select-meter',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({meterId})});const data=await response.json();if(!response.ok||!data.connected)throw new Error(data.error||'Meter switch failed.');powerSmartState=data;powerSmartData=data.data||null;powerSmartDailyData=null;renderPowerSmartState();renderPowerSmartData();}catch(error){powerSmartMessage('powerSmartDataMessage',error.message);}finally{powerSmartSetBusy(false);}await loadPowerSmartData(false);
-}
-async function disconnectPowerSmart(){
-  if(powerSmartBusy)return;powerSmartSetBusy(true,'Disconnecting…');try{await fetch('/api/master/powersmart/disconnect',{method:'POST',credentials:'same-origin'});}catch(_error){}powerSmartState={connected:false};powerSmartData=null;powerSmartDailyData=null;renderPowerSmartState();renderPowerSmartData();powerSmartSetBusy(false);
-}
-function initPowerSmart(){
-  $('powerSmartLoginForm')?.addEventListener('submit',connectPowerSmart);$('powerSmartRefresh')?.addEventListener('click',()=>loadPowerSmartData(true));$('powerSmartReload')?.addEventListener('click',()=>loadPowerSmartData(true));$('powerSmartDisconnect')?.addEventListener('click',disconnectPowerSmart);$('powerSmartMeterSelect')?.addEventListener('change',selectPowerSmartMeter);$$('.powerSmartModeBar button[data-mode]').forEach(button=>button.addEventListener('click',()=>setPowerSmartMode(button.dataset.mode)));$('powerSmartDayRange')?.addEventListener('change',event=>{powerSmartDayRange=Number(event.target.value)||30;renderPowerSmartData();});setPowerSmartMode('daily');renderPowerSmartState();
-}
-
 function render(){
   if(!live)return;
   const s=live.systems||{}; const a=s.pv14000; const b=s.pv9000; const u=s.matrix; const c=s.combined||{}; const m=live.meter||null;
@@ -493,27 +414,27 @@ function render(){
   renderAiLiveContext();
   renderUltraDeck(a,b,u,c,m);
   renderControlRoom(a,b,u,c,m);
-  renderPowerSmartComparison();
   drawAll();
 }
 function setState(id,online){set(id,online?'ONLINE':'OFFLINE');const el=$(id);el?.classList.toggle('online',Boolean(online));el?.classList.remove('pending');}
-function setPendingState(id,label='LOGGER PENDING'){
+function setPendingState(id,label='LOGGER READY'){
   set(id,label);const el=$(id);if(!el)return;el.classList.remove('online');el.classList.add('pending');
 }
 function renderStatus(a,b,u,c,m){
   const target=monitoredSystemTarget();const count=[a,b,u].filter(Boolean).length;
+  const pv14000State=pv14000ConnectionState(a);
   set('systemsOnline',`${count}/${target}`);
-  if(a){setState('pv14000Online',true);setState('pv14000PageStatus',true);}else{setPendingState('pv14000Online');setPendingState('pv14000PageStatus');}
+  if(a){setState('pv14000Online',true);setState('pv14000PageStatus',true);}else if(pv14000State.pending){setPendingState('pv14000Online',pv14000State.label);setPendingState('pv14000PageStatus',pv14000State.label);}else{setState('pv14000Online',false);setState('pv14000PageStatus',false);set('pv14000Online',pv14000State.label);set('pv14000PageStatus',pv14000State.label);}
   setState('pv9000Online',b); setState('pv9000PageStatus',b);
   setState('matrixOnline',u); setState('matrixPageStatus',u);
   set('combinedPageStatus',count===target?'MONITORED SYSTEMS LIVE':`${count}/${target} LIVE`);
   $('combinedPageStatus')?.classList.toggle('online',count===target);
-  set('pv14000Fresh',a?ageText(a.updatedAt):'WiFi logger moved to PV9000 • new logger pending');
+  set('pv14000Fresh',a?ageText(a.updatedAt):pv14000State.detail);
   set('pv9000Fresh',b?`${ageText(b.updatedAt)} • reassigned WiFi logger`:'Reassigned WiFi logger unavailable');
   set('matrixFresh',u?ageText(u.updatedAt):'API unavailable');
   setState('tuyaOnline',Boolean(m?.online)); set('tuyaFresh',m?ageText(m.updatedAt):'Meter API unavailable');
   const notice=[];
-  if(live.errors?.pv14000)notice.push(`PV14000: ${live.errors.pv14000}`);
+  if(live.errors?.pv14000&&!pv14000State.pending)notice.push(`PV14000: ${live.errors.pv14000}`);
   if(live.errors?.pv9000)notice.push(`PV9000: ${live.errors.pv9000}`);
   if(live.errors?.matrix)notice.push(`Matrix: ${live.errors.matrix}`);
   if(live.errors?.tuya)notice.push(`Tuya meter: ${live.errors.tuya}`);
@@ -522,8 +443,9 @@ function renderStatus(a,b,u,c,m){
 function blank(ids){ids.forEach(id=>set(id,'--'));}
 function renderPv14000(a){
   if(!a){
-    set('pv14000SolarHero','NOT MONITORED');set('pv14000PvSplit','6.78 kWp physical array • telemetry excluded');
-    set('pv14000LoadGaugeText','--');set('pv14000SolarGaugeText','--');set('pv14000GridGaugeText','--');set('pv14000GridMode','LOGGER PENDING');set('pv14000GridV','-- V');set('pv14000TodaySolar','NOT MONITORED');set('pv14000Temp','--');
+    const state=pv14000ConnectionState();
+    set('pv14000SolarHero','WAITING DATA');set('pv14000PvSplit','6.78 kWp array • dedicated logger configured');
+    set('pv14000LoadGaugeText','--');set('pv14000SolarGaugeText','--');set('pv14000GridGaugeText','--');set('pv14000GridMode',state.label);set('pv14000GridV','-- V');set('pv14000TodaySolar','WAITING DATA');set('pv14000Temp','--');
     gauge('pv14000LoadGauge',0,10000);gauge('pv14000SolarGauge',0,6780);gauge('pv14000GridGauge',0,10000,'grid');return;
   }
   set('pv14000SolarHero',fmtPower(a.solarW)); set('pv14000PvSplit',`PV1 ${fmtPower(a.pv1W)} • PV2 ${fmtPower(a.pv2W)}`);
@@ -571,7 +493,7 @@ function renderCombined(c,a,b,u){
   set('combinedBatteryGaugeText',u?fmtPower(u.batteryW):'--'); set('combinedBatteryMode',u?batteryMode:'--'); set('combinedBatteryVoltage',u?`${finite(u.batteryV).toFixed(1)} V`:'-- V');
   gauge('combinedSolarGauge',c.solarW,monitoredPvCapacityW()); gauge('combinedLoadGauge',c.siteDemandW,16000); gauge('combinedGridGauge',c.gridW,16000,'grid');
   const total=finite(c.solarW);
-  set('pv14000Share',a&&total>0?`${Math.round(finite(a.solarW)/total*100)}%`:'UNMONITORED');
+  set('pv14000Share',a&&total>0?`${Math.round(finite(a.solarW)/total*100)}% LIVE`:pv14000ConnectionState(a).label);
   set('pv9000Share',b&&total>0?`${Math.round(finite(b.solarW)/total*100)}% LIVE`:'--%');
   set('masterBattery',u?.batteryPct!=null?`${Math.round(u.batteryPct)}%`:'--');
   set('masterHealth',[a,b,u].filter(Boolean).length===monitoredSystemTarget()?'Excellent · monitored':'Partial');
@@ -612,6 +534,7 @@ function flowGridFromMeterOrInverter(c,m){
   return{mode:w>=0?'IMPORTING':'EXPORTING',watts:Math.abs(w),source:'Inverter estimate'};
 }
 function renderEnergyFlow(a,b,u,c={},m=null){
+  const pv14000State=pv14000ConnectionState(a);
   const pv14000Solar=finite(a?.solarW), pv9000Solar=finite(b?.solarW), totalSolar=finite(c?.solarW,pv14000Solar+pv9000Solar);
   const demand=finite(c?.siteDemandW,finite(a?.loadW)+finite(b?.loadW));
   const smart=finite(c?.smartLoadW,finite(b?.smartLoadW));
@@ -627,8 +550,8 @@ function renderEnergyFlow(a,b,u,c={},m=null){
   set('flowGridBadge',`${grid.mode==='IDLE'?'IDLE':grid.mode} ${fmtPower(grid.watts)}`);
   set('flowBatteryBadge',u?`${fmtPct(u.batteryPct)} • ${batteryMode}`:'--');
 
-  set('flowPv14000Value',a?fmtPower(pv14000Solar):'LOGGER PENDING');
-  set('flowPv14000Sub',a?`Load ${fmtPower(a.loadW)} • ${fmtPower(a.gridW)} grid`:'WiFi logger moved • telemetry pending');
+  set('flowPv14000Value',a?fmtPower(pv14000Solar):pv14000State.label);
+  set('flowPv14000Sub',a?`Load ${fmtPower(a.loadW)} • ${fmtPower(a.gridW)} grid`:pv14000State.detail);
   set('flowPv9000Value',b?fmtPower(pv9000Solar):'--');
   set('flowPv9000Sub',b?`1 string • 8×545 W • Smart ${fmtPower(finite(b.smartLoadW))}`:'Reassigned WiFi logger unavailable');
   set('flowGridValue',grid.mode==='IDLE'?'0 W':fmtPower(grid.watts));
@@ -636,7 +559,7 @@ function renderEnergyFlow(a,b,u,c={},m=null){
   set('flowMeterValue',m?.online?String(m.mode||grid.mode).toUpperCase():'OFFLINE');
   set('flowMeterSub',m?.online?`${finite(m.voltage).toFixed(1)} V • ${finite(m.currentA).toFixed(2)} A`:'Tuya meter unavailable');
   set('flowBusValue',fmtPower(totalSolar));
-  set('flowBusSub',`PV9000 monitored • Demand ${fmtPower(demand)} • Grid ${grid.mode}`);
+  set('flowBusSub',`${a?'PV14000 + PV9000 monitored':'PV9000 live • PV14000 awaiting data'} • Demand ${fmtPower(demand)} • Grid ${grid.mode}`);
   set('flowSiteLoadValue',fmtPower(demand));
   set('flowSmartValue',fmtPower(smart));
   set('flowMatrixValue',u?fmtPower(matrixIn):'--');
@@ -645,7 +568,7 @@ function renderEnergyFlow(a,b,u,c={},m=null){
   set('flowBatteryValue',u?fmtPct(u.batteryPct):'--');
   set('flowBatterySub',u?`${batteryMode} • ${fmtSignedPower(batteryW)}`:'Battery unavailable');
 
-  set('flowPv14000LineText',a?fmtPower(pv14000Solar):'LOGGER PENDING');
+  set('flowPv14000LineText',a?fmtPower(pv14000Solar):pv14000State.label);
   set('flowPv9000LineText',b?fmtPower(pv9000Solar):'--');
   set('flowGridLineTitle',grid.mode==='EXPORTING'?'Site → Grid':'Grid → Site');
   set('flowGridLineText',grid.mode==='IDLE'?'0 W':fmtPower(grid.watts));
@@ -668,7 +591,7 @@ function renderEnergyFlow(a,b,u,c={},m=null){
   set('flowBalanceStatus',balanceError==null?'Tuya direction unavailable':balanceAbs<250?'Excellent accounting match':balanceAbs<750?'Small measurement difference':'Check CT / meter reconciliation');
 
   setFlowNodeState('flowNodePv14000',Boolean(a),pv14000Solar>30);
-  $('flowNodePv14000')?.classList.toggle('pending',!a);
+  $('flowNodePv14000')?.classList.toggle('pending',pv14000State.pending);
   setFlowNodeState('flowNodePv9000',Boolean(b),pv9000Solar>30 || smart>30 || matrixIn>30);
   setFlowNodeState('flowNodeGrid',Boolean(m?.online)||Math.abs(finite(c?.gridW))>0,grid.watts>30);
   setFlowNodeState('flowNodeMeter',Boolean(m?.online),grid.watts>30);
@@ -698,7 +621,7 @@ function renderEnergyFlow(a,b,u,c={},m=null){
   setFlowLabel('flowUpsOutLineText',matrixLoad>30?'ups':'off');
   setFlowLabel('flowBatteryLineText',batteryActive?(batteryMode==='DISCHARGING'?'batteryDischarge':'batteryCharge'):'off');
 
-  const seqSolar = totalSolar>30 ? `${fmtPower(totalSolar)} PV9000 solar • PV14000 unmonitored` : 'PV9000 waiting for solar • PV14000 logger pending';
+  const seqSolar = totalSolar>30 ? `${fmtPower(totalSolar)} total solar • ${a?'both inverter feeds live':'PV14000 awaiting first data'}` : `Solar idle • PV14000 ${pv14000State.label.toLowerCase()}`;
   const seqGrid = grid.mode==='IDLE' ? 'Grid exchange is idle' : `${grid.mode} ${fmtPower(grid.watts)} via Tuya meter`;
   const seqPv9000 = `${fmtPower(smart)} smart load • ${u?fmtPower(matrixIn):'--'} UPS AC input`;
   const seqUps = u ? `${fmtPower(matrixLoad)} backup load • battery ${fmtPct(u.batteryPct)} ${batteryMode.toLowerCase()}` : 'Matrix UPS offline';
@@ -763,7 +686,7 @@ function renderIntelligenceCenter(){
   const gridDependency=loadKwh>0?clamp(importKwh/loadKwh*100):0;const selfConsumption=solarKwh>0?clamp((solarKwh-exportKwh)/solarKwh*100):0;const selfConsumedKwh=Math.max(0,Math.min(solarKwh,solarKwh-exportKwh));const estimatedBenefit=selfConsumedKwh*rate+exportCredit;
   set('financeSolarValue',te?fmtPkr(solarValue):'--');set('financeImportCost',te?fmtPkr(importCost):'--');set('financeExportCredit',te?fmtPkr(exportCredit):'--');set('financeBenefit',te?fmtPkr(estimatedBenefit):'--');set('financeNetGrid',te?fmtPkr(netGridCost):'--');set('financeGridDependency',te?`${gridDependency.toFixed(1)}%`:'--');set('financeSelfConsumption',te?`${selfConsumption.toFixed(1)}%`:'--');
 
-  const yieldCombined=solarKwh/monitoredSolarKwp(),yieldB=finite(eb.solarKwh)/MONITORED_SOLAR_KWP;set('perfYield',te?yieldCombined.toFixed(2):'--');set('perfPv14000Yield',a&&te?`${(finite(ea.solarKwh)/6.78).toFixed(2)} kWh/kWp`:'LOGGER PENDING');set('perfPv9000Yield',te?`${yieldB.toFixed(2)} kWh/kWp`:'--');set('perfLiveUtil',`${clamp(finite(c.solarW)/monitoredPvCapacityW()*100,0,999).toFixed(1)}%`);set('perfSolarPeak',peaks.todaySolarPeakW?`${fmtPower(peaks.todaySolarPeakW)} @ ${fmtTimePk(peaks.todaySolarPeakAt)}`:'Collecting');set('perfSmartEnergy',te?fmtKwh(ec.smartLoadKwh):'--');const clipA=a&&finite(a.solarW)>=6780*.97,clipB=finite(b?.solarW)>=MONITORED_PV_CAPACITY_W*.97;set('perfClipping',clipA||clipB?`WATCH • ${clipA?'PV14000 ':''}${clipB?'PV9000':''}`.trim():'No live clipping sign');
+  const yieldCombined=solarKwh/monitoredSolarKwp(),yieldB=finite(eb.solarKwh)/PV9000_SOLAR_KWP;set('perfYield',te?yieldCombined.toFixed(2):'--');set('perfPv14000Yield',a&&te?`${(finite(ea.solarKwh)/PV14000_SOLAR_KWP).toFixed(2)} kWh/kWp`:pv14000ConnectionState(a).label);set('perfPv9000Yield',te?`${yieldB.toFixed(2)} kWh/kWp`:'--');set('perfLiveUtil',`${clamp(finite(c.solarW)/monitoredPvCapacityW()*100,0,999).toFixed(1)}%`);set('perfSolarPeak',peaks.todaySolarPeakW?`${fmtPower(peaks.todaySolarPeakW)} @ ${fmtTimePk(peaks.todaySolarPeakAt)}`:'Collecting');set('perfSmartEnergy',te?fmtKwh(ec.smartLoadKwh):'--');const clipA=a&&finite(a.solarW)>=6780*.97,clipB=finite(b?.solarW)>=4360*.97;set('perfClipping',clipA||clipB?`WATCH • ${clipA?'PV14000 ':''}${clipB?'PV9000':''}`.trim():'No live clipping sign');
   const targetYield=finite(cfg.targetDailyYieldKwhPerKwp);if(targetYield>0&&te){const target=targetYield*monitoredSolarKwp();set('perfTarget',`${(solarKwh/Math.max(.01,target)*100).toFixed(0)}% • ${target.toFixed(1)} kWh monitored target`);}else set('perfTarget','Not configured');
   const best=peaks.bestDay,worst=peaks.worstDay;set('perfBestWorst',best&&worst?`History estimate • Best ${String(best.date).slice(0,10)} ${finite(best.solarKwh).toFixed(1)} kWh • Worst ${String(worst.date).slice(0,10)} ${finite(worst.solarKwh).toFixed(1)} kWh`:'Best/worst complete-day estimates appear as PostgreSQL history grows.');
 
@@ -793,7 +716,7 @@ function renderSmartInsights(ctx){
   const cards=[];const add=(title,text,level='good')=>cards.push(`<div class="insightCard ${level}"><strong>${title}</strong>${text}</div>`);
   const {a,b,u,c,dayMode,headroom,activeLimit,reconAbs,balanceError,te,solarKwh,selfConsumption,peaks,todayImportPeak,todayExportPeak}=ctx;
   add(dayMode?'Day export watch':'Night import watch',headroom>=0?`${fmtPower(headroom)} headroom remains before the ${fmtPower(activeLimit)} target.`:`Target is exceeded by ${fmtPower(-headroom)}.`,headroom>=0?'good':'danger');
-  const solar=finite(c.solarW);if(solar>50)add('Solar contribution','PV9000 supplies 100% of monitored live solar. PV14000 is excluded until its new WiFi logger is installed.');
+  const solar=finite(c.solarW);if(solar>50)add('Solar contribution',a?`PV14000 ${fmtPower(a.solarW)} + PV9000 ${fmtPower(b?.solarW)} are included in the monitored total.`:`PV9000 is live; PV14000 logger is configured and awaiting its first data frame.`);
   if(te)add('Today energy',`${solarKwh.toFixed(2)} kWh solar produced with ${selfConsumption.toFixed(1)}% estimated self-consumption.`);
   if(reconAbs!=null)add('Grid reconciliation',`Physical Tuya meter and inverter calculation differ by ${fmtPower(reconAbs)}.`,reconAbs>500?'warn':'good');
   if(balanceError!=null)add('Power accounting',`${fmtSignedPower(balanceError)} balance error on the upstream bus.`,Math.abs(balanceError)>750?'warn':'good');
@@ -806,10 +729,10 @@ function renderSmartInsights(ctx){
 function renderCommandView(){
   if(!live)return;const s=live.systems||{},a=s.pv14000,b=s.pv9000,u=s.matrix,c=s.combined||{},m=live.meter||null;const cfg=analytics?.config||live.guardrails||{};
   const importLimit=finite(cfg.nightImportLimitW,5000),exportLimit=finite(cfg.dayExportLimitW,6000);const importW=finite(m?.importW),exportW=finite(m?.exportW);const physical=meterSignedW(m);
-  set('cmdSolar',fmtPower(c.solarW));set('cmdSolarSub',`PV9000 ${fmtPower(b?.solarW)} • PV14000 logger pending`);set('cmdDemand',fmtPower(c.siteDemandW));set('cmdGrid',physical==null?'UNKNOWN':fmtPower(Math.abs(physical)));set('cmdGridMode',physical==null?'Tuya direction unavailable':fmtGridSigned(physical));set('cmdBattery',u?.batteryPct==null?'--':`${Math.round(finite(u.batteryPct))}%`);set('cmdBatterySub',u?`${batteryFlowMode(u.batteryW,u.batteryMode)} • ${fmtPower(u.batteryW)}`:'Matrix offline');
+  set('cmdSolar',fmtPower(c.solarW));set('cmdSolarSub',`${a?`PV14000 ${fmtPower(a.solarW)}`:'PV14000 awaiting data'} • PV9000 ${fmtPower(b?.solarW)}`);set('cmdDemand',fmtPower(c.siteDemandW));set('cmdGrid',physical==null?'UNKNOWN':fmtPower(Math.abs(physical)));set('cmdGridMode',physical==null?'Tuya direction unavailable':fmtGridSigned(physical));set('cmdBattery',u?.batteryPct==null?'--':`${Math.round(finite(u.batteryPct))}%`);set('cmdBatterySub',u?`${batteryFlowMode(u.batteryW,u.batteryMode)} • ${fmtPower(u.batteryW)}`:'Matrix offline');
   set('cmdImport',fmtPower(importW));setProgress('cmdImportTrack',importW/importLimit*100);set('cmdImportHeadroom',`${importLimit-importW>=0?fmtPower(importLimit-importW)+' headroom':'OVER '+fmtPower(importW-importLimit)} • target ${fmtPower(importLimit)}`);
   set('cmdExport',fmtPower(exportW));setProgress('cmdExportTrack',exportW/exportLimit*100);set('cmdExportHeadroom',`${exportLimit-exportW>=0?fmtPower(exportLimit-exportW)+' headroom':'OVER '+fmtPower(exportW-exportLimit)} • target ${fmtPower(exportLimit)}`);
-  set('cmdPv14000',a?fmtPower(a.solarW):'LOGGER PENDING');set('cmdPv14000State',a?`${ageText(a.updatedAt)} • ${gridMode(a.gridW)}`:'Physical system installed • not in live totals');set('cmdPv9000',b?fmtPower(b.solarW):'OFFLINE');set('cmdPv9000State',b?`${ageText(b.updatedAt)} • 1 string • Smart ${fmtPower(b.smartLoadW)}`:'Reassigned logger unavailable');set('cmdMatrix',u?fmtPower(u.loadW):'OFFLINE');set('cmdMatrixState',u?`UPS load • Battery ${fmtPct(u.batteryPct)}`:'API unavailable');set('cmdTuya',m?.online?fmtPower(m.powerW):'OFFLINE');set('cmdTuyaState',m?.online?`${String(m.mode||'').toUpperCase()} • ${finite(m.voltage).toFixed(1)} V`:'Meter unavailable');
+  set('cmdPv14000',a?fmtPower(a.solarW):pv14000ConnectionState(a).label);set('cmdPv14000State',a?`${ageText(a.updatedAt)} • ${gridMode(a.gridW)}`:pv14000ConnectionState(a).detail);set('cmdPv9000',b?fmtPower(b.solarW):'OFFLINE');set('cmdPv9000State',b?`${ageText(b.updatedAt)} • 1 string • Smart ${fmtPower(b.smartLoadW)}`:'Reassigned logger unavailable');set('cmdMatrix',u?fmtPower(u.loadW):'OFFLINE');set('cmdMatrixState',u?`UPS load • Battery ${fmtPct(u.batteryPct)}`:'API unavailable');set('cmdTuya',m?.online?fmtPower(m.powerW):'OFFLINE');set('cmdTuyaState',m?.online?`${String(m.mode||'').toUpperCase()} • ${finite(m.voltage).toFixed(1)} V`:'Meter unavailable');
   const dayMode=analytics?.mode?.dayMode??false;const pctNow=dayMode?exportW/exportLimit*100:importW/importLimit*100;const alertEl=$('cmdAlert')?.closest('.commandAlert');if(alertEl){alertEl.classList.remove('warn','danger');if(pctNow>=100)alertEl.classList.add('danger');else if(pctNow>=80)alertEl.classList.add('warn');}set('cmdAlert',pctNow>=100?`${dayMode?'DAY EXPORT':'NIGHT IMPORT'} target exceeded.`:pctNow>=80?`${dayMode?'Day export':'Night import'} is in the watch zone.`:`${dayMode?'Day export':'Night import'} guard is normal.`);set('commandMode',dayMode?'DAY WATCH':'NIGHT WATCH');
 }
 
@@ -823,10 +746,11 @@ function drawDailyTimeline(){
 
 function metricCards(rows){return rows.map(([label,value,small,cls=''])=>`<div class="detailCard ${cls}">${iconLabelHtml(label)}<b>${value}</b><small>${small||''}</small></div>`).join('');}
 function renderDetailPages(a,b,u,c){
+  const pv14000State=pv14000ConnectionState(a);
   $('pv14000Page').innerHTML=metricCards(a?[
     ['Solar PV',fmtPower(a.solarW),'6.78 kWp installed'],['AC output / load',fmtPower(a.loadW),'10 kW capacity'],['Utility grid',fmtPower(a.gridW),gridMode(a.gridW)],['Grid voltage',`${finite(a.gridV).toFixed(1)} V`,`${finite(a.gridHz).toFixed(2)} Hz`],
     ['PV1',fmtPower(a.pv1W),`${finite(a.pv1V).toFixed(1)} V • ${finite(a.pv1A).toFixed(1)} A`],['PV2',fmtPower(a.pv2W),`${finite(a.pv2V).toFixed(1)} V • ${finite(a.pv2A).toFixed(1)} A`],['Today solar',fmtKwh(a.todaySolar),'Production'],['Temperature',`${Math.round(finite(a.temp))}°C`,'Inverter']
-  ]:[['Monitoring','LOGGER PENDING','WiFi logger moved to PV9000','pendingDetail'],['Physical array','6.78 kWp','Still installed • excluded from live totals'],['AC inverter','10 kW','Fronus Meta physical asset'],['Next step','NEW WIFI LOGGER','Add PV14000_NEW_API_BASE after installation']]);
+  ]:[['Logger',pv14000State.label,pv14000State.detail,pv14000State.pending?'pendingDetail':'alertDetail'],['Physical array','6.78 kWp','Configured for monitored totals'],['AC inverter','10 kW','Fronus Meta physical asset'],['Automatic start','READY','No dashboard setting required after plug-in']]);
 
   $('pv9000Page').innerHTML=metricCards(b?[
     ['Solar PV',fmtPower(b.solarW),'4.36 kWp • 8 × 545 W'],['AC output / load',fmtPower(b.loadW),'Feeds UPS path'],['Utility grid',fmtPower(b.gridW),gridMode(b.gridW)],['Smart Load',fmtPower(b.smartLoadW),'Direct from PV9000'],
@@ -839,20 +763,21 @@ function renderDetailPages(a,b,u,c){
   ]:[['Connection','OFFLINE','Matrix API unavailable','alertDetail']]);
 
   $('combinedPage').innerHTML=metricCards([
-    ['Monitored solar',fmtPower(c.solarW),'PV9000 only'],['Physical PV','11.14 kWp','6.78 + 4.36 kWp installed'],['Monitored PV','4.36 kWp','1 × 8 panels × 545 W'],['Site demand',fmtPower(c.siteDemandW),'Topology-corrected'],
+    ['Monitored solar',fmtPower(c.solarW),a?'PV14000 + PV9000':'PV9000 live • PV14000 awaiting data'],['Physical PV','11.14 kWp','6.78 + 4.36 kWp installed'],['Monitored PV','11.14 kWp','Both logger mappings configured'],['Site demand',fmtPower(c.siteDemandW),'Topology-corrected'],
     ['Utility grid',fmtPower(c.gridW),gridMode(c.gridW)],['Smart Load',fmtPower(c.smartLoadW),'Direct from PV9000'],['UPS AC input',fmtPower(c.upsAcInputW),'Internal PV9000 → Matrix transfer'],['Live systems',`${finite(c.connectedSystems)}/${monitoredSystemTarget()}`,c.health]
   ]);
 }
 function healthRows(rows){return rows.map(([k,v,ok])=>{const [name,cls]=iconMetaForLabel(k);return `<div class="healthRow"><span class="healthLabel iconLabel ${cls}">${uiIcon(name,cls)}<span>${k}</span></span><b class="${ok==='pending'?'pendingText':ok===false?'badText':'okText'}">${v}</b></div>`}).join('');}
 function renderHealth(a,b,u,c,m,errors){
-  $('pv14000Health').innerHTML=healthRows([['API connection',a?'ONLINE':'LOGGER PENDING',a?true:'pending'],['Monitoring',a?ageText(a.updatedAt):'INTENTIONALLY UNMONITORED',a?true:'pending'],['Physical PV','6.78 kWp',true],['AC capacity','10 kW',true]]);
+  const pv14000State=pv14000ConnectionState(a);
+  $('pv14000Health').innerHTML=healthRows([['API connection',a?'ONLINE':pv14000State.label,a?true:pv14000State.pending?'pending':false],['Monitoring',a?ageText(a.updatedAt):pv14000State.detail,a?true:pv14000State.pending?'pending':false],['Physical PV','6.78 kWp',true],['AC capacity','10 kW',true]]);
   $('pv9000Health').innerHTML=healthRows([['API connection',b?'ONLINE':'OFFLINE',Boolean(b)],['Last update',b?ageText(b.updatedAt):'--',Boolean(b)],['Active string','1 • 8×545 W',true],['Feeds','UPS + Smart Load',Boolean(b)]]);
   $('matrixHealth').innerHTML=healthRows([['API connection',u?'ONLINE':'OFFLINE',Boolean(u)],['Role','UPS / BACKUP',true],['PV installed','0 W',true],['Battery',u?fmtPct(u.batteryPct):'--',Boolean(u)]]);
   const historyOnline=Boolean(live?.history?.online); const target=monitoredSystemTarget();const count=[a,b,u].filter(Boolean).length;
-  $('combinedHealth').innerHTML=healthRows([['Live systems',`${count}/${target}`,count===target],['Tuya physical meter',m?.online?'ONLINE':'OFFLINE',Boolean(m?.online)],['Tuya direction',m?.mode||'--',Boolean(m?.online)],['Physical PV','11.14 kWp',true],['Monitored PV',`${monitoredSolarKwp().toFixed(2)} kWp`,true],['Grid estimate source',a?'PV14000 + PV9000':'PV9000 only',Boolean(b)],['Online history',historyOnline?'PostgreSQL ACTIVE':'Fallback',historyOnline],['Overall',count===target?'Excellent':'Partial',count===target]]);
+  $('combinedHealth').innerHTML=healthRows([['Live systems',`${count}/${target}`,count===target],['Tuya physical meter',m?.online?'ONLINE':'OFFLINE',Boolean(m?.online)],['Tuya direction',m?.mode||'--',Boolean(m?.online)],['Physical PV','11.14 kWp',true],['Monitored PV',`${monitoredSolarKwp().toFixed(2)} kWp`,true],['Grid estimate source',a?'PV14000 + PV9000':'PV9000 while PV14000 connects',Boolean(b)],['Online history',historyOnline?'PostgreSQL ACTIVE':'Fallback',historyOnline],['Overall',count===target?'Excellent':'Partial',count===target]]);
   set('healthPill',count===target?'MONITORED SYSTEMS NORMAL':'ATTENTION'); $('healthPill')?.classList.toggle('good',count===target);
-  const messages=[]; if(errors.pv14000)messages.push(`PV14000: ${errors.pv14000}`); if(errors.pv9000)messages.push(`PV9000: ${errors.pv9000}`); if(errors.matrix)messages.push(`Matrix: ${errors.matrix}`); if(errors.tuya)messages.push(`Tuya meter: ${errors.tuya}`);
-  set('diagnosticNotice',messages.length?messages.join(' • '):'✓ PV14000 is intentionally unmonitored until its new WiFi logger arrives. PV9000 + Matrix telemetry is normal; Matrix internal AC transfer is excluded from utility-grid totals.');
+  const messages=[]; if(errors.pv14000&&!pv14000State.pending)messages.push(`PV14000: ${errors.pv14000}`); if(errors.pv9000)messages.push(`PV9000: ${errors.pv9000}`); if(errors.matrix)messages.push(`Matrix: ${errors.matrix}`); if(errors.tuya)messages.push(`Tuya meter: ${errors.tuya}`);
+  set('diagnosticNotice',messages.length?messages.join(' • '):'✓ Both inverter logger mappings are configured. PV14000 will join live totals automatically after its first frame; Matrix internal AC transfer remains excluded from utility-grid totals.');
   connectionAlertCount=messages.length; updateAlertBadge();
 }
 
@@ -862,11 +787,11 @@ function renderEnergy(){
   const labels={T:'Today',Y:'Yesterday',TM:'This month',LM:'Last month'}; const label=labels[energy.period]||'Selected period';
   set('totSolar',fmtKwh(c.solarKwh)); set('totLoad',fmtKwh(c.loadKwh)); set('totImport',fmtKwh(c.importKwh)); set('totExport',fmtKwh(c.exportKwh));
   ['totPeriodSolar','totPeriodLoad','totPeriodImport','totPeriodExport'].forEach(id=>set(id,`${label} • topology corrected`));
-  set('energyPeriodLabel',`${label} · PV9000 monitored + Combined`);
+  set('energyPeriodLabel',`${label} · PV14000 + PV9000 + Combined`);
   set('solarValueBig',Math.round(finite(c.solarKwh)*finite(energy.rate,60)).toLocaleString('en-PK'));
   set('rateValue',`PKR ${finite(energy.rate,60).toFixed(2)}/kWh`);
-  set('totPv14000Solar',a.solarKwh==null?'NOT MONITORED':fmtKwh(a.solarKwh)); set('totPv9000Solar',fmtKwh(b.solarKwh)); set('totCombinedSolar',fmtKwh(c.solarKwh));
-  set('totPv14000Load',a.loadKwh==null?'NOT MONITORED':fmtKwh(a.loadKwh)); set('totPv9000Load',fmtKwh(b.loadKwh)); set('totMatrixLoad',fmtKwh(u.loadKwh));
+  set('totPv14000Solar',a.solarKwh==null?'WAITING DATA':fmtKwh(a.solarKwh)); set('totPv9000Solar',fmtKwh(b.solarKwh)); set('totCombinedSolar',fmtKwh(c.solarKwh));
+  set('totPv14000Load',a.loadKwh==null?'WAITING DATA':fmtKwh(a.loadKwh)); set('totPv9000Load',fmtKwh(b.loadKwh)); set('totMatrixLoad',fmtKwh(u.loadKwh));
   set('totCombinedImport',fmtKwh(c.importKwh)); set('totCombinedExport',fmtKwh(c.exportKwh));
   const notice=$('energyNotice'); const errs=energy.errors||{}; const messages=[]; if(errs.pv14000)messages.push(`PV14000: ${errs.pv14000}`); if(errs.pv9000)messages.push(`PV9000: ${errs.pv9000}`); if(errs.matrix)messages.push(`Matrix: ${errs.matrix}`); if(notice){notice.hidden=!messages.length;notice.textContent=messages.join(' • ');}
   drawEnergyBars();
@@ -899,9 +824,9 @@ function addUltraEvent(title,detail='',level='good'){
 }
 function renderUltraEvents(){const box=$('ultraEventStream');if(!box)return;if(!ultraEvents.length){box.innerHTML='<div class="ultraEmpty">Events will appear when site state changes.</div>';return;}box.innerHTML=ultraEvents.map(e=>`<div class="ultraEvent ${escapeHtml(e.level)}"><b>${escapeHtml(e.title)}</b><span>${escapeHtml(fmtTimePk(e.ts))} PKT • ${escapeHtml(e.detail)}</span></div>`).join('');}
 function detectUltraEvents(a,b,u,c,m,guardMode,guardPct){
-  const state={b:Boolean(b),u:Boolean(u),m:Boolean(m?.online),grid:m?.online?String(m.mode||'IDLE').toUpperCase():gridMode(c?.gridW),bat:u?batteryFlowMode(u.batteryW,u.batteryMode):'OFFLINE',guard:statusFromPct(guardPct)};
+  const state={a:Boolean(a),b:Boolean(b),u:Boolean(u),m:Boolean(m?.online),grid:m?.online?String(m.mode||'IDLE').toUpperCase():gridMode(c?.gridW),bat:u?batteryFlowMode(u.batteryW,u.batteryMode):'OFFLINE',guard:statusFromPct(guardPct)};
   if(!ultraLastState){ultraLastState=state;addUltraEvent('Mission Control linked','Live estate telemetry attached','good');return;}
-  for(const [k,label] of [['b','PV9000'],['u','Matrix UPS'],['m','Tuya Meter']]) if(state[k]!==ultraLastState[k]) addUltraEvent(`${label} ${state[k]?'ONLINE':'OFFLINE'}`,state[k]?'Telemetry restored':'Telemetry feed unavailable',state[k]?'good':'danger');
+  for(const [k,label] of [['a','PV14000'],['b','PV9000'],['u','Matrix UPS'],['m','Tuya Meter']]) if(state[k]!==ultraLastState[k]) addUltraEvent(`${label} ${state[k]?'ONLINE':'OFFLINE'}`,state[k]?'Telemetry restored':'Telemetry feed unavailable',state[k]?'good':'danger');
   if(state.grid!==ultraLastState.grid)addUltraEvent(`Grid ${state.grid}`,m?.online?`${fmtPower(Math.max(finite(m.importW),finite(m.exportW)))} on physical meter`:'Using inverter estimate',state.grid==='IMPORTING'?'warn':'good');
   if(state.bat!==ultraLastState.bat)addUltraEvent(`Battery ${state.bat}`,u?`${fmtPct(u.batteryPct)} • ${fmtSignedPower(u.batteryW)}`:'Matrix unavailable',state.bat==='DISCHARGING'?'warn':'good');
   if(state.guard!==ultraLastState.guard)addUltraEvent(`${guardMode} guard ${state.guard}`,`${Math.round(guardPct)}% of active limit`,guardPct>=100?'danger':guardPct>=80?'warn':'good');
@@ -915,6 +840,7 @@ function ultraQualityScore(m,a,b){
   return{score:clamp(score),notes};
 }
 function renderUltraDeck(a,b,u,c,m){
+  const pv14000State=pv14000ConnectionState(a);
   const solar=finite(c?.solarW), demand=finite(c?.siteDemandW);const importW=m?.online?finite(m.importW):Math.max(0,finite(c?.gridW));const exportW=m?.online?finite(m.exportW):Math.max(0,-finite(c?.gridW));
   const dayMode=analytics?.mode?.dayMode??false;const guardMode=dayMode?'DAY EXPORT':'NIGHT IMPORT';const guardW=dayMode?exportW:importW;const guardLimit=dayMode?6000:5000;const guardPct=guardW/guardLimit*100;
   const sourceTarget=monitoredSourceTarget();const sources=[...(a?[[a,a.updatedAt]]:[]),[b,b?.updatedAt],[u,u?.updatedAt],[m?.online?m:null,m?.updatedAt]];const fresh=sources.filter(([x,ts])=>Boolean(x)&&ultraFresh(ts)).length;const confidence=fresh/sourceTarget*100;
@@ -922,7 +848,7 @@ function renderUltraDeck(a,b,u,c,m){
   const temps=[finite(a?.temp,-999),finite(b?.temp,-999),finite(u?.transformer||u?.temp,-999),finite(m?.temperatureC,-999)].filter(x=>x>-100);const hottest=temps.length?Math.max(...temps):0;
   let score=100;score-=(sourceTarget-fresh)*12;if(guardPct>=100)score-=18;else if(guardPct>=90)score-=8;else if(guardPct>=80)score-=4;if(hottest>=70)score-=12;else if(hottest>=60)score-=5;if(u?.batteryPct!=null&&finite(u.batteryPct)<20)score-=8;score=clamp(score);
   const scoreLevel=score>=90?'ELITE':score>=75?'GOOD':score>=55?'WATCH':'ATTENTION';
-  set('ultraScore',Math.round(score));set('ultraScoreLabel',scoreLevel);set('ultraScoreSub',`${fresh}/${sourceTarget} fresh sources • ${a?'PV14000 live':'PV14000 logger pending'} • hottest ${hottest?Math.round(hottest)+'°C':'--'}`);ultraRing('ultraScoreRing',score);
+  set('ultraScore',Math.round(score));set('ultraScoreLabel',scoreLevel);set('ultraScoreSub',`${fresh}/${sourceTarget} fresh sources • PV14000 ${a?'live':pv14000State.label.toLowerCase()} • hottest ${hottest?Math.round(hottest)+'°C':'--'}`);ultraRing('ultraScoreRing',score);
   set('ribbonScore',`${Math.round(score)}/100`);set('ribbonCoverage',`${Math.round(clamp(coverage))}%`);set('ribbonIndependence',`${Math.round(clamp(independence))}%`);set('ribbonConfidence',`${Math.round(confidence)}%`);
   set('ultraSolar',fmtPower(solar));set('ultraDemand',fmtPower(demand));set('ultraGrid',m?.online?fmtGridSigned(meterSignedW(m)):fmtGridSigned(c?.gridW));set('ultraGridSub',m?.online?`${finite(m.voltage).toFixed(1)} V • Tuya physical`:'Inverter estimate');
   set('ultraBattery',u?fmtPct(u.batteryPct):'--');set('ultraBatterySub',u?`${batteryFlowMode(u.batteryW,u.batteryMode)} • ${fmtSignedPower(u.batteryW)}`:'Matrix offline');
@@ -932,13 +858,13 @@ function renderUltraDeck(a,b,u,c,m){
   const hist=mergeHistory();const solarD=ultraTrend(hist,'solarW'),loadD=ultraTrend(hist,'loadW'),gridD=ultraTrend(hist,'gridW');set('ultraSolarTrend',ultraTrendText(solarD));set('ultraLoadTrend',ultraTrendText(loadD));set('ultraSolarDelta',solarD==null?'--':`${solarD>=0?'+':'−'}${fmtPower(Math.abs(solarD))}`);set('ultraDemandDelta',loadD==null?'--':`${loadD>=0?'+':'−'}${fmtPower(Math.abs(loadD))}`);set('ultraGridDelta',gridD==null?'--':`${gridD>=0?'+':'−'}${fmtPower(Math.abs(gridD))}`);set('ultraSamples',String(hist.length));
   const q=ultraQualityScore(m,a,b);const hz=finite(a?.gridHz||b?.gridHz,0);set('ultraQualityGrade',q.score>=92?'A+':q.score>=84?'A':q.score>=72?'B':'C');set('ultraVoltage',m?.voltage!=null?`${finite(m.voltage).toFixed(1)} V`:'--');set('ultraVoltageState',m?.voltage!=null?(Math.abs(finite(m.voltage)-230)<=10?'Near nominal':'Check voltage'):'Unavailable');set('ultraCurrent',m?.currentA!=null?`${finite(m.currentA).toFixed(2)} A`:'--');set('ultraPf',m?.powerFactor!=null?finite(m.powerFactor).toFixed(3):'--');set('ultraPfState',m?.powerFactor!=null?(finite(m.powerFactor)>=.9?'Healthy':'Watch PF'):'Unavailable');set('ultraHz',hz?`${hz.toFixed(2)} Hz`:'--');set('ultraQualityNote',q.notes.length?q.notes.join(' • '):'Voltage, frequency and power factor look healthy.');const qb=$('ultraQualityBar');if(qb)qb.style.width=`${q.score}%`;
   const assets=[
-    {icon:'☀',name:'FRONUS META 10KW',sub:'PV14000 • 6.78 kWp physical',on:Boolean(a),pending:!a,m:[['Solar',a?fmtPower(a.solarW):'UNMONITORED'],['WiFi',a?'CONNECTED':'NEW LOGGER'],['State',a?'LIVE':'PENDING']]},
+    {icon:'☀',name:'FRONUS META 10KW',sub:'PV14000 • 6.78 kWp monitored',on:Boolean(a),pending:pv14000State.pending,m:[['Solar',a?fmtPower(a.solarW):'WAITING DATA'],['WiFi',a?'CONNECTED':'CONFIGURED'],['State',a?'LIVE':pv14000State.label]]},
     {icon:'☀',name:'FRONUS META 6KW',sub:'PV9000 • 1 string • 8×545 W',on:Boolean(b),m:[['Solar',b?fmtPower(b.solarW):'--'],['Smart',b?fmtPower(b.smartLoadW):'--'],['Temp',b?`${Math.round(finite(b.temp))}°C`:'--']]},
     {icon:'⚡',name:'FRONUS MATRIX 6KW',sub:'UPS / BACKUP',on:Boolean(u),m:[['UPS load',u?fmtPower(u.loadW):'--'],['Battery',u?fmtPct(u.batteryPct):'--'],['Temp',u?`${Math.round(finite(u.transformer||u.temp))}°C`:'--']]},
     {icon:'↕',name:'TUYA PHYSICAL METER',sub:'GRID REFERENCE',on:Boolean(m?.online),m:[['Grid',m?.online?fmtGridSigned(meterSignedW(m)):'--'],['Voltage',m?.online?`${finite(m.voltage).toFixed(1)}V`:'--'],['PF',m?.online&&m.powerFactor!=null?finite(m.powerFactor).toFixed(3):'--']]}
   ];
-  const ag=$('ultraAssetGrid');if(ag)ag.innerHTML=assets.map(x=>`<div class="ultraAsset"><div class="ultraAssetIcon">${x.icon}</div><div class="ultraAssetName"><b>${escapeHtml(x.name)}</b><span>${escapeHtml(x.sub)}</span></div><div class="ultraAssetState ${x.pending?'pending':x.on?'':'off'}">${x.pending?'LOGGER PENDING':x.on?'ONLINE':'OFFLINE'}</div><div class="ultraAssetMetrics">${x.m.map(([k,v])=>`<div><span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b></div>`).join('')}</div></div>`).join('');set('ultraAssetsOnline',`${sources.filter(([x])=>Boolean(x)).length}/${sourceTarget} LIVE${a?'':' • 1 LOGGER PENDING'}`);
-  const ops=[];let priority='NORMAL',priorityClass='';if(!b){ops.push(['📡','Restore PV9000 telemetry','PV9000 is not currently contributing to the master data picture. Check its reassigned WiFi logger / API path.']);priority='WATCH';priorityClass='warn';}if(guardPct>=80){ops.push(['🎯',`${guardMode} guard is ${Math.round(guardPct)}%`,`Only ${fmtPower(Math.max(0,guardLimit-guardW))} headroom remains before the configured watch limit.`]);priority=guardPct>=100?'CRITICAL':'WATCH';priorityClass=guardPct>=100?'danger':'warn';}if(q.score<80)ops.push(['〽','Power quality needs attention',q.notes.join(' • ')||'Review voltage / PF / frequency.']);if(u&&finite(u.batteryPct)<30)ops.push(['🔋','UPS battery reserve is low',`${fmtPct(u.batteryPct)} SOC with ${fmtPower(u.loadW)} downstream load.`]);if(confidence<75)ops.push(['🛰','Data confidence reduced',`${fresh}/${sourceTarget} monitored sources are fresh inside the 180 second supervision window.`]);if(!ops.length)ops.push(['✅','No urgent operator action','PV9000, Matrix and Tuya telemetry, grid guardrails and power quality are inside the normal watch zone.']);const ol=$('ultraOpsList');if(ol)ol.innerHTML=ops.slice(0,5).map(([ic,t,d])=>`<div class="ultraOp"><i>${ic}</i><div><b>${escapeHtml(t)}</b><span>${escapeHtml(d)}</span></div></div>`).join('');set('ultraPriority',priority);const pb=$('ultraPriority');if(pb){pb.classList.remove('warn','danger');if(priorityClass)pb.classList.add(priorityClass);}
+  const ag=$('ultraAssetGrid');if(ag)ag.innerHTML=assets.map(x=>`<div class="ultraAsset"><div class="ultraAssetIcon">${x.icon}</div><div class="ultraAssetName"><b>${escapeHtml(x.name)}</b><span>${escapeHtml(x.sub)}</span></div><div class="ultraAssetState ${x.pending?'pending':x.on?'':'off'}">${x.pending?'LOGGER READY':x.on?'ONLINE':'OFFLINE'}</div><div class="ultraAssetMetrics">${x.m.map(([k,v])=>`<div><span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b></div>`).join('')}</div></div>`).join('');set('ultraAssetsOnline',`${sources.filter(([x])=>Boolean(x)).length}/${sourceTarget} LIVE${a?'':' • PV14000 '+pv14000State.label}`);
+  const ops=[];let priority='NORMAL',priorityClass='';if(!b){ops.push(['📡','Restore PV9000 telemetry','PV9000 is not currently contributing to the master data picture. Check its reassigned WiFi logger / API path.']);priority='WATCH';priorityClass='warn';}if(!a&&!pv14000State.pending){ops.push(['📡','Restore PV14000 telemetry',pv14000State.detail]);priority='WATCH';priorityClass='warn';}if(guardPct>=80){ops.push(['🎯',`${guardMode} guard is ${Math.round(guardPct)}%`,`Only ${fmtPower(Math.max(0,guardLimit-guardW))} headroom remains before the configured watch limit.`]);priority=guardPct>=100?'CRITICAL':'WATCH';priorityClass=guardPct>=100?'danger':'warn';}if(q.score<80)ops.push(['〽','Power quality needs attention',q.notes.join(' • ')||'Review voltage / PF / frequency.']);if(u&&finite(u.batteryPct)<30)ops.push(['🔋','UPS battery reserve is low',`${fmtPct(u.batteryPct)} SOC with ${fmtPower(u.loadW)} downstream load.`]);if(confidence<75)ops.push(['🛰','Data confidence reduced',`${fresh}/${sourceTarget} monitored sources are fresh inside the 180 second supervision window.`]);if(!ops.length)ops.push(['✅','No urgent operator action','Both solar logger feeds, Matrix, Tuya, grid guardrails and power quality are inside the normal watch zone.']);const ol=$('ultraOpsList');if(ol)ol.innerHTML=ops.slice(0,5).map(([ic,t,d])=>`<div class="ultraOp"><i>${ic}</i><div><b>${escapeHtml(t)}</b><span>${escapeHtml(d)}</span></div></div>`).join('');set('ultraPriority',priority);const pb=$('ultraPriority');if(pb){pb.classList.remove('warn','danger');if(priorityClass)pb.classList.add(priorityClass);}
   const tSolar=finite(todayEnergy?.combined?.solarKwh,finite(c?.todaySolar));const tImport=finite(todayEnergy?.combined?.importKwh,finite(c?.todayImport));const tExport=finite(todayEnergy?.combined?.exportKwh,finite(c?.todayExport));set('ultraTodaySolar',fmtKwh(tSolar));set('ultraTodayYield',`${(tSolar/monitoredSolarKwp()).toFixed(2)} kWh/kWp`);set('ultraTodayImport',fmtKwh(tImport));set('ultraTodayExport',fmtKwh(tExport));set('ultraPvUtil',`${Math.round(clamp(solar/monitoredPvCapacityW()*100))}%`);set('ultraUpsLoad',u?fmtPower(u.loadW):'--');set('ultraUpsMode',u?`${batteryFlowMode(u.batteryW,u.batteryMode)} • ${fmtPct(u.batteryPct)}`:'Matrix offline');const ages=[...(a?[a.updatedAt]:[]),b?.updatedAt,u?.updatedAt,m?.updatedAt].filter(Boolean).map(ts=>Date.now()-finite(ts));set('ultraSyncAge',ages.length?`${Math.round(Math.min(...ages)/1000)}s`:'--');
   detectUltraEvents(a,b,u,c,m,guardMode,guardPct);drawUltraPulse();
 }
@@ -946,9 +872,9 @@ function drawUltraPulse(){
   const canvas=$('ultraPulseChart');if(!canvas)return;const all=mergeHistory().slice(-180);const {ctx,w,h}=canvasSize(canvas);ctx.clearRect(0,0,w,h);const pad={l:6,r:6,t:10,b:12};ctx.strokeStyle='rgba(120,190,215,.10)';ctx.lineWidth=1;for(let i=0;i<4;i++){const yy=pad.t+i*(h-pad.t-pad.b)/3;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();}if(!all.length){ctx.fillStyle='#6f9eb3';ctx.font='11px Segoe UI';ctx.fillText('Collecting live history…',18,h/2);return;}const max=Math.max(1000,...all.flatMap(p=>[finite(p.solarW),finite(p.loadW),Math.abs(finite(p.gridW))]))*1.12;const x=i=>pad.l+(all.length<=1?0:i/(all.length-1))*(w-pad.l-pad.r);const y=v=>pad.t+(max-Math.abs(finite(v)))/max*(h-pad.t-pad.b);const series=[[COLORS.solar,'solarW'],[COLORS.load,'loadW'],['#3ce09b','gridW']];for(const [color,key] of series){ctx.beginPath();all.forEach((p,i)=>{const xx=x(i),yy=y(p[key]);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.strokeStyle=color;ctx.lineWidth=2;ctx.shadowColor=color;ctx.shadowBlur=6;ctx.stroke();ctx.shadowBlur=0;}}
 
 /* =========================================================
-   V37 DESKTOP CONTROL ROOM - PV9000 logger reassignment
+   V38 DESKTOP CONTROL ROOM - dual logger monitoring
    ========================================================= */
-function openControlView(name){$q('.navtab[data-view="'+name+'"]')?.click();window.scrollTo({top:0,behavior:'smooth'});}
+function openControlView(name){$('.navtab[data-view="'+name+'"]')?.click();window.scrollTo({top:0,behavior:'smooth'});}
 function setControlFocus(enabled){document.body.classList.toggle('controlFocusMode',Boolean(enabled));set('controlFocus',enabled?'◉ EXIT FOCUS':'◉ FOCUS');requestAnimationFrame(()=>{drawAll();drawUltraPulse();});}
 function setControlDensity(enabled){document.body.classList.toggle('controlDense',Boolean(enabled));set('controlDensity',enabled?'▦ COMFORT':'▦ DENSE');try{localStorage.setItem('rajaFrazControlDense',enabled?'1':'0');}catch(_error){}requestAnimationFrame(()=>{drawAll();drawUltraPulse();});}
 function initControlRoom(){
@@ -967,7 +893,7 @@ function initControlRoom(){
     if(key==='escape'&&document.body.classList.contains('controlFocusMode'))setControlFocus(false);
   });
 }
-function setControlAsset(id,online,power,stateLabel=''){const el=$(id);if(!el)return;const pending=stateLabel==='LOGGER PENDING';el.classList.toggle('online',Boolean(online));el.classList.toggle('offline',!online&&!pending);el.classList.toggle('pending',pending);const state=el.querySelector('b');if(state)state.textContent=stateLabel||(online?'ONLINE':'OFFLINE');const value=el.querySelector('small');if(value)value.textContent=power;}
+function setControlAsset(id,online,power,stateLabel=''){const el=$(id);if(!el)return;const pending=stateLabel==='LOGGER READY';el.classList.toggle('online',Boolean(online));el.classList.toggle('offline',!online&&!pending);el.classList.toggle('pending',pending);const state=el.querySelector('b');if(state)state.textContent=stateLabel||(online?'ONLINE':'OFFLINE');const value=el.querySelector('small');if(value)value.textContent=power;}
 function renderControlRoom(a,b,u,c={},m=null){
   if(!$('mission'))return;
   const physical=meterSignedW(m),grid=physical==null?finite(c.gridW):physical,solar=finite(c.solarW),demand=finite(c.siteDemandW);const dayMode=analytics?.mode?.dayMode??false;const guardLimit=dayMode?finite(analytics?.config?.dayExportLimitW,6000):finite(analytics?.config?.nightImportLimitW,5000);const guardW=dayMode?Math.max(0,-grid):Math.max(0,grid);const guardPct=guardW/Math.max(1,guardLimit)*100;const balance=physical==null?null:solar+physical-demand;const recon=physical==null?null:Math.abs(physical-finite(c.gridW));
@@ -977,13 +903,13 @@ function renderControlRoom(a,b,u,c={},m=null){
   set('controlRailGuard',`${Math.round(guardPct)}%`);set('controlRailGuardSub',`${dayMode?'EXPORT':'IMPORT'} ${fmtPower(guardW)} / ${fmtPower(guardLimit)}`);
   set('controlRailBattery',u?fmtPct(u.batteryPct):'--');set('controlRailBatterySub',u?`${batteryFlowMode(u.batteryW,u.batteryMode)} • ${fmtPower(u.loadW)} load`:'Matrix unavailable');
   set('controlRailBalance',balance==null?'UNKNOWN':fmtSignedPower(balance));set('controlRailBalanceSub',balance==null?'Physical direction required':`${Math.abs(balance)<250?'Excellent':Math.abs(balance)<750?'Review':'Large'} accounting difference`);
-  setControlAsset('controlAsset14000',Boolean(a),a?`${fmtPower(a.solarW)} solar`:'6.78 kWp physical • telemetry excluded',a?'':'LOGGER PENDING');setControlAsset('controlAsset9000',Boolean(b),b?`${fmtPower(b.solarW)} • 1 string`:'Telemetry unavailable');setControlAsset('controlAssetMatrix',Boolean(u),u?`${fmtPower(u.loadW)} protected load`:'Telemetry unavailable');setControlAsset('controlAssetTuya',Boolean(m?.online),m?.online?fmtGridSigned(physical):'Physical reference unavailable');
+  const pv14000State=pv14000ConnectionState(a);setControlAsset('controlAsset14000',Boolean(a),a?`${fmtPower(a.solarW)} solar`:`6.78 kWp • ${pv14000State.detail}`,a?'':pv14000State.label);setControlAsset('controlAsset9000',Boolean(b),b?`${fmtPower(b.solarW)} • 1 string`:'Telemetry unavailable');setControlAsset('controlAssetMatrix',Boolean(u),u?`${fmtPower(u.loadW)} protected load`:'Telemetry unavailable');setControlAsset('controlAssetTuya',Boolean(m?.online),m?.online?fmtGridSigned(physical):'Physical reference unavailable');
   const sourceTarget=monitoredSourceTarget();const sources=[...(a?[a]:[]),b,u,m?.online?m:null],sourceCount=sources.filter(Boolean).length;const ages=[...(a?[a.updatedAt]:[]),b?.updatedAt,u?.updatedAt,m?.updatedAt].filter(Boolean).map(ts=>Math.max(0,Date.now()-finite(ts)));set('controlLastSync',ages.length?`Oldest monitored sync ${Math.round(Math.max(...ages)/1000)}s`:'Sync unavailable');
   let level='normal',label='SYSTEM NORMAL',message='All monitored assets, grid guardrails and power accounting are inside the normal watch zone.';
   if(guardPct>=100){level='danger';label='ACTION REQUIRED';message=`${dayMode?'Export':'Import'} is above the ${fmtPower(guardLimit)} operating guard by ${fmtPower(guardW-guardLimit)}.`;}
   else if(u&&u.batteryPct!=null&&finite(u.batteryPct)<20){level='danger';label='LOW UPS RESERVE';message=`Matrix battery is ${fmtPct(u.batteryPct)} with ${fmtPower(u.loadW)} protected load. Review backup runtime.`;}
   else if(sourceCount<sourceTarget-1){level='danger';label='DATA DEGRADED';message=`Only ${sourceCount}/${sourceTarget} monitored sources are available. Restore missing telemetry before relying on site totals.`;}
-  else if(sourceCount<sourceTarget){level='warn';label='SOURCE WATCH';message=`${sourceCount}/${sourceTarget} monitored sources are available. PV14000 logger pending is planned and not counted as a fault.`;}
+  else if(sourceCount<sourceTarget){level='warn';label='SOURCE WATCH';message=`${sourceCount}/${sourceTarget} monitored sources are available. PV14000 is ${pv14000State.label.toLowerCase()} and will join automatically when data arrives.`;}
   else if(guardPct>=80){level='warn';label='GUARD WATCH';message=`${dayMode?'Export':'Import'} has reached ${Math.round(guardPct)}% of the active ${fmtPower(guardLimit)} guard.`;}
   else if(recon!=null&&recon>500){level='warn';label='METER REVIEW';message=`Tuya physical grid and inverter estimate differ by ${fmtPower(recon)}. Check CT direction and meter timing.`;}
   else if(balance!=null&&Math.abs(balance)>750){level='warn';label='BALANCE REVIEW';message=`Power balance error is ${fmtSignedPower(balance)}. Check telemetry timing and topology reconciliation.`;}
@@ -1058,7 +984,7 @@ function renderOperatorTools(){
 }
 function operatorSnapshot(){
   const x=liveToolContext();const recon=x.physical==null?null:Math.abs(x.physical-finite(x.c.gridW));const balance=x.physical==null?null:x.solar+x.physical-x.demand;
-  return{generatedAt:new Date().toISOString(),timezone:'Asia/Karachi',monitoringOnly:true,site:{physicalPvCapacityW:PHYSICAL_PV_CAPACITY_W,monitoredPvCapacityW:MONITORED_PV_CAPACITY_W,solarW:x.solar,demandW:x.demand,physicalGridW:x.physical,gridEstimateW:finite(x.c.gridW),gridMode:x.m?.online?x.m.mode:gridMode(x.c.gridW),todaySolarKwh:finite(todayEnergy?.combined?.solarKwh,finite(x.c.todaySolar))},systems:{pv14000:{online:Boolean(x.a),loggerState:x.a?'online':'waiting-for-new-wifi-logger',solarW:x.a?finite(x.a.solarW):null,loadW:x.a?finite(x.a.loadW):null,updatedAt:x.a?.updatedAt||null},pv9000:{online:Boolean(x.b),loggerSource:'reassigned-from-pv14000',activeStrings:1,panels:8,panelW:545,solarW:finite(x.b?.solarW),loadW:finite(x.b?.loadW),smartLoadW:finite(x.b?.smartLoadW),updatedAt:x.b?.updatedAt||null},matrix:{online:Boolean(x.u),loadW:finite(x.u?.loadW),acInputW:finite(x.u?.acInputW),batteryPct:x.u?.batteryPct??null,batteryW:finite(x.u?.batteryW),updatedAt:x.u?.updatedAt||null},tuya:{online:Boolean(x.m?.online),mode:x.m?.mode||null,importW:finite(x.m?.importW),exportW:finite(x.m?.exportW),voltage:x.m?.voltage??null,currentA:x.m?.currentA??null,powerFactor:x.m?.powerFactor??null,updatedAt:x.m?.updatedAt||null}},diagnostics:{meterInverterDifferenceW:recon,powerBalanceErrorW:balance}};
+  return{generatedAt:new Date().toISOString(),timezone:'Asia/Karachi',monitoringOnly:true,site:{physicalPvCapacityW:PHYSICAL_PV_CAPACITY_W,monitoredPvCapacityW:monitoredPvCapacityW(),solarW:x.solar,demandW:x.demand,physicalGridW:x.physical,gridEstimateW:finite(x.c.gridW),gridMode:x.m?.online?x.m.mode:gridMode(x.c.gridW),todaySolarKwh:finite(todayEnergy?.combined?.solarKwh,finite(x.c.todaySolar))},systems:{pv14000:{online:Boolean(x.a),loggerState:x.a?'online':pv14000ConnectionState(x.a).code,loggerDevice:live?.telemetryPlan?.pv14000Device||null,solarW:x.a?finite(x.a.solarW):null,loadW:x.a?finite(x.a.loadW):null,updatedAt:x.a?.updatedAt||null},pv9000:{online:Boolean(x.b),loggerSource:'reassigned-from-pv14000',activeStrings:1,panels:8,panelW:545,solarW:finite(x.b?.solarW),loadW:finite(x.b?.loadW),smartLoadW:finite(x.b?.smartLoadW),updatedAt:x.b?.updatedAt||null},matrix:{online:Boolean(x.u),loadW:finite(x.u?.loadW),acInputW:finite(x.u?.acInputW),batteryPct:x.u?.batteryPct??null,batteryW:finite(x.u?.batteryW),updatedAt:x.u?.updatedAt||null},tuya:{online:Boolean(x.m?.online),mode:x.m?.mode||null,importW:finite(x.m?.importW),exportW:finite(x.m?.exportW),voltage:x.m?.voltage??null,currentA:x.m?.currentA??null,powerFactor:x.m?.powerFactor??null,updatedAt:x.m?.updatedAt||null}},diagnostics:{meterInverterDifferenceW:recon,powerBalanceErrorW:balance}};
 }
 function operatorSummary(snapshot=operatorSnapshot()){
   const s=snapshot.site,u=snapshot.systems.matrix,t=snapshot.systems.tuya,d=snapshot.diagnostics;
@@ -1118,9 +1044,8 @@ async function start(){
   initTuyaPickers();
   initControlRoom();
   initOperatorTools();
-  initPowerSmart();
   await wakeMasterSources();
-  await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadAnalytics(),loadTimelineHistory(),loadWeather(),loadTuyaQuickTotals(),loadAiStatus(),loadNotificationStatus(),loadPowerSmartStatus()]);
+  await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadAnalytics(),loadTimelineHistory(),loadWeather(),loadTuyaQuickTotals(),loadAiStatus(),loadNotificationStatus()]);
   if(!todayEnergy)todayEnergy=energy?.period==='T'?energy:null;
   await loadSelectedTuyaEnergy();
   renderIntelligenceCenter(); renderCommandView(); renderAiLiveContext(); drawDailyTimeline(); drawUltraPulse();
@@ -1131,8 +1056,6 @@ async function start(){
   setInterval(loadTimelineHistory,60000);
   setInterval(loadTodayEnergy,300000);
   setInterval(loadTuyaQuickTotals,300000);
-  setInterval(()=>{if(powerSmartState.connected)loadPowerSmartData(false);},300000);
-  setInterval(renderPowerSmartState,60000);
   setInterval(loadWeather,600000);
 }
 setInterval(()=>{loadNotificationStatus().catch(()=>{});},60000);

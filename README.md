@@ -1,61 +1,23 @@
-# Raja Fraz Master Solar Dashboard - V39 DAILY POWER SMART
+# Raja Fraz Master Solar Dashboard - V38 DUAL LOGGER
 
-V39 adds the official-app daily consumption layout while preserving the secure owner-account connection and monthly history.
+V38 adds the new dedicated PV14000 WiFi logger directly to the Master server while preserving the existing PV9000 logger and all V37 topology rules.
 
-## V39 highlights
+## V38 live topology
 
-- Daily opens by default; Monthly remains available as a separate tab.
-- Day-wise stacked chart keeps Import Peak, Import Off-Peak, Export Peak and Export Off-Peak separate.
-- Scrollable daily table includes each date, all four tariff values and net import/export.
-- 7, 14 and 30-day display ranges are included.
-- Samsung Galaxy S23 Ultra portrait layout uses compact controls, horizontal chart/table containment and no page-width overflow.
-- Daily records are requested only for a meter returned by the signed-in owner's Power Smart account.
-- `POWER_SMART_MDM_PRIVATE_KEY` accepts a dedicated PITC-issued MDM key. No extracted or shared application credential is included.
-- If PITC daily authorization is not configured, the dashboard clearly reports that limitation and keeps the official Monthly tab working.
-
----
-
-# Raja Fraz Master Solar Dashboard - V38 POWER SMART + ANDROID
-
-V38 adds a secure, owner-authorized GEPCO/PITC Power Smart account view and a portrait-first Android application layout while preserving the V37 PV9000 logger mapping.
-
-## V38 highlights
-
-- New **Power Smart** tab using the owner's normal `api-powersmart.pitc.com.pk` account sign-in.
-- Power Smart password is sent only for sign-in and is never saved to disk, browser storage, source files or logs.
-- Account token is held in a random, HTTP-only, same-site server session for up to 8 hours.
-- Registered reference numbers and customer IDs are masked before they reach the browser.
-- Official monthly consumption history is displayed beside the independent live Tuya meter and PV9000 grid estimate.
-- No extracted/shared MDM private key is embedded. Instant MDM data stays disabled unless PITC separately authorizes it.
-- Sign-in rate limiting, same-origin mutation checks, cache controls and read-only routes are included.
-- Samsung Galaxy S23 Ultra portrait mode gets compact command landing, fixed bottom navigation, larger touch targets, safe-area spacing and single-column Power Smart forms.
-
-Optional tuning variables:
-
-- `POWER_SMART_SESSION_HOURS=8`
-- `POWER_SMART_CACHE_SECONDS=120`
-
----
-
-# Raja Fraz Master Solar Dashboard - V37 PV9000 LOGGER REASSIGNMENT
-
-V37 maps the existing live WiFi logger to PV9000 and treats PV14000 as a physically installed but intentionally unmonitored asset until its new logger is ordered and installed.
-
-## V37 live topology
-
-- **PV9000 is the only live-monitored solar inverter:** one active string, `8 × 545 W = 4,360 W` (4.36 kWp).
-- The existing `inverterzone-dashboard.onrender.com` logger/API is now assigned to PV9000.
-- **PV14000 remains physically installed:** 10 kW AC inverter with 6.78 kWp PV, but its live telemetry and energy are excluded from current totals.
-- Physical installed PV remains **11.14 kWp**; currently monitored PV is **4.36 kWp**.
+- **PV14000:** 10 kW AC, 6.78 kWp PV, dedicated logger configured (device ending `B1AF`).
+- **PV9000:** 6 kW AC, one active string, `8 × 545 W = 4,360 W` (4.36 kWp), existing reassigned logger.
+- Installed and logger-configured PV capacity is now **11.14 kWp**.
+- Before the new dongle sends a frame, the UI shows **LOGGER READY · awaiting first data**. This is not treated as an inverter fault.
+- As soon as the dongle is powered and online, PV14000 automatically joins live solar, load, grid, energy, Flow, charts, Control Room, Intelligence, AI context, health and exports.
+- PV14000 keeps both MPPT/string readings; PV9000 remains normalized to its single physical string.
 - Matrix remains the downstream PV-less UPS supplied from PV9000; its internal AC transfer is not counted as utility-grid import.
-- Health, Flow, Control Room, Intelligence, AI context, totals, charts, tools and exported snapshots now distinguish `LOGGER PENDING` from a genuine device failure.
-- Existing PV14000 historical records are preserved.
+- PostgreSQL begins storing new PV14000 history samples automatically after the first live frame.
 
-## Render variables for V37
+## Render variables for V38
 
-`PV9000_API_BASE=https://inverterzone-dashboard.onrender.com` is included in `render.yaml`. Leave `PV14000_NEW_API_BASE` empty until the new PV14000 logger/API is ready. At that time, enter its URL and redeploy; the dashboard will automatically include both solar inverters again.
+`render.yaml` includes the dedicated `PV14000_DEVICE_ID` mapping and the existing PV9000 upstream URL. The Master server calls the official InverterZone logger API directly, so a second PV14000 dashboard service is not required.
 
-The server also recognizes an existing `PV14000_API_BASE` value as the legacy logger and automatically routes it to PV9000, so current Render installations can upgrade without losing the live logger connection.
+`PV14000_NEW_API_BASE` remains an optional advanced override for a separate authenticated PV14000 dashboard. Leave it blank to use the built-in direct collector. Keep the GitHub repository private because device identifiers and deployment configuration are server-side operational data.
 
 ---
 
@@ -460,8 +422,9 @@ Professional master monitoring for the three-inverter topology plus the independ
 ### System 01 - FRONUS META 10KW - PV14000
 - AC output capacity: **10,000 W**
 - Installed PV: **6,780 W**
-- Role: physical solar inverter; **new WiFi logger pending**
-- Current live telemetry: intentionally excluded until `PV14000_NEW_API_BASE` is configured
+- Role: solar inverter with a **dedicated WiFi logger**
+- Current live telemetry: collected directly by the Master server after the logger is powered
+- Initial UI state: **LOGGER READY** until the first frame arrives
 
 ### System 02 - FRONUS META 6KW - PV9000
 - AC output capacity: **6,000 W**
@@ -483,33 +446,34 @@ Professional master monitoring for the three-inverter topology plus the independ
 
 The dashboard is topology-aware to prevent double-counting.
 
-- **Current monitored solar = PV9000 solar only**
+- **Current monitored solar = available PV14000 + PV9000 live solar**
 - **Total installed PV = 6,780 + 4,360 = 11,140 W**
-- **Current monitored PV = 4,360 W**
-- **Current inverter grid estimate = PV9000 grid**; Tuya remains the independent physical reference.
-- When `PV14000_NEW_API_BASE` is later configured, the dashboard automatically adds PV14000 back into monitored totals.
+- **Logger-configured monitored PV = 11,140 W**
+- **Current inverter grid estimate = PV14000 grid + PV9000 grid** whenever both feeds are live; Tuya remains the independent physical reference.
+- If PV14000 has not sent its first frame, the dashboard continues with PV9000 data and clearly marks PV14000 as awaiting data.
 - Matrix AC input is an internal PV9000 -> Matrix transfer and is **not** utility-grid power.
 - Smart Load belongs to PV9000.
 - By default, Matrix UPS load is downstream of PV9000 and is **not added again** to Master site demand.
 
 ## Render environment variables
 
-V37 live logger mapping:
+V38 live logger mapping:
 
 ```text
 PV9000_API_BASE=https://inverterzone-dashboard.onrender.com
+PV14000_DEVICE_ID=<dedicated PV14000 logger identifier>
 META_DASHBOARD_USER=admin
 META_DASHBOARD_PASSWORD=<existing dashboard password>
 MATRIX_API_BASE=https://fronus-matrix-dashboard.onrender.com
 ```
 
-Leave the new PV14000 logger URL empty until it is installed:
+The built-in direct collector is used when this optional URL is empty:
 
 ```text
 PV14000_NEW_API_BASE=
 ```
 
-When the new logger is ready, set `PV14000_NEW_API_BASE` and, only if its Basic Auth differs, add:
+Only when you intentionally deploy a separate PV14000 dashboard, set `PV14000_NEW_API_BASE` and its Basic Auth:
 
 ```text
 PV14000_NEW_DASHBOARD_USER=admin
