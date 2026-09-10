@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import pg from "pg";
 import webpush from "web-push";
+import { createUpstreamGate, rateLimitError } from "./upstream-requests.mjs";
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -149,6 +150,8 @@ let dbReady = false;
 let lastStoredAt = 0;
 let lastLiveCache = null;
 let lastLiveCacheAt = 0;
+let liveInFlight = null;
+const upstreamGate = createUpstreamGate();
 let tuyaDirectionState = { importKwh: null, exportKwh: null, mode: "IDLE", lastDirectionAt: 0 };
 
 const MIME = {
@@ -296,6 +299,7 @@ function authHeader(user, password) {
   return `Basic ${Buffer.from(`${user}:${password}`, "utf8").toString("base64")}`;
 }
 async function getJson(url, { timeoutMs = 16000, headers = {} } = {}) {
+  return upstreamGate.run(url, async () => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -304,6 +308,7 @@ async function getJson(url, { timeoutMs = 16000, headers = {} } = {}) {
       headers: { "User-Agent": "Raja-Fraz-Master/6.0", ...headers }
     });
     const text = await response.text();
+    if (response.status === 429) throw rateLimitError(response.headers.get("retry-after"));
     let data;
     try {
       data = JSON.parse(text);
@@ -326,8 +331,10 @@ async function getJson(url, { timeoutMs = 16000, headers = {} } = {}) {
   } finally {
     clearTimeout(timer);
   }
+  }, `${url}|${headers.Authorization || ""}`);
 }
 async function postFormJson(url, values, { timeoutMs = 16000, headers = {} } = {}) {
+  return upstreamGate.run(url, async () => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -342,6 +349,7 @@ async function postFormJson(url, values, { timeoutMs = 16000, headers = {} } = {
       body: new URLSearchParams(values).toString()
     });
     const text = await response.text();
+    if (response.status === 429) throw rateLimitError(response.headers.get("retry-after"));
     let data;
     try {
       data = JSON.parse(text);
@@ -361,6 +369,7 @@ async function postFormJson(url, values, { timeoutMs = 16000, headers = {} } = {
   } finally {
     clearTimeout(timer);
   }
+  }, `${url}|${JSON.stringify(values)}|${headers.Authorization || ""}`);
 }
 async function getDashboardJson(base, path, user, password, options = {}) {
   if (!base) {
@@ -389,6 +398,7 @@ async function getDirectPv14000Live(options = {}) {
       return payload;
     } catch (error) {
       lastError = error;
+      if (error?.status === 429) throw error;
     }
   }
   throw lastError || new Error("PV14000 logger API is unavailable");
@@ -465,7 +475,8 @@ function normalizeSolarInverter(payload, config) {
     todayExport: first(s, ["todayNetGrid", "todayExport", "gridExportToday"], 0),
     todaySmartLoad: first(s, ["todaySmartLoad", "smartLoadToday"], 0),
     health: "Excellent",
-    updatedAt: num(s.receivedAt || s.timestamp || Date.now())
+    sourceCached: Boolean(payload?.cached),
+    updatedAt: num(payload?.collectedAt || s.receivedAt || s.timestamp || Date.now())
   };
 }
 function normalizePv14000(payload) {
@@ -895,6 +906,7 @@ function sourceHint(label, error) {
   if (!error) return null;
   if (error.code === "NOT_CONFIGURED") return `${label} API is not configured in Render.`;
   if (error.status === 401) return `${label} dashboard requires Basic Auth. Check its dashboard password in Render.`;
+  if (error.status === 429) return `${label} data feed rate limited (HTTP 429); retry in ${Math.ceil(Math.max(0, error.retryAfterMs || 0) / 1000)} seconds. Inverter connection is unconfirmed.`;
   return error.message;
 }
 
@@ -1102,11 +1114,17 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
     if (store) storeSample(lastLiveCache).catch(() => {});
     return lastLiveCache;
   }
+  if (!liveInFlight) liveInFlight = collectLive().finally(() => { liveInFlight = null; });
+  const result = await liveInFlight;
+  if (store) await storeSample(result);
+  return result;
+}
+async function collectLive() {
   const systems = {};
   const errors = {};
   const [aResult, bResult, uResult, tResult] = await Promise.allSettled([
     PV14000_CONFIGURED ? getPv14000Json("/api/live?fresh=1").then(normalizePv14000) : Promise.resolve(null),
-    getPv9000Json("/api/live?fresh=1").then(normalizePv9000),
+    getPv9000Json("/api/live").then(normalizePv9000),
     getJson(`${MATRIX_API_BASE}/api/matrix`).then(normalizeMatrixUps),
     getJson(`${TUYA_API_BASE}/api/meter`).then(normalizeTuyaMeter)
   ]);
@@ -1176,7 +1194,6 @@ async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
   };
   lastLiveCache = result;
   lastLiveCacheAt = Date.now();
-  if (store) await storeSample(result);
   return result;
 }
 
@@ -2000,7 +2017,7 @@ function staticPath(urlPath) {
   return abs.startsWith(root) ? abs : null;
 }
 
-export { normalizeDeviceId, normalizePv14000, normalizeEnergy };
+export { normalizeDeviceId, normalizePv14000, normalizeEnergy, getJson, fetchLive };
 
 const server = http.createServer(async (req, res) => {
   try {
