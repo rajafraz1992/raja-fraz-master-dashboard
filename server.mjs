@@ -6,6 +6,7 @@ import { dirname } from "node:path";
 import pg from "pg";
 import webpush from "web-push";
 import { createUpstreamGate, rateLimitError } from "./upstream-requests.mjs";
+import { createLiveSources } from "./live-sources.mjs";
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -145,7 +146,7 @@ const CURRENT_MONITORED_PV_W = PV9000_PV_INSTALLED_W + (PV14000_CONFIGURED ? PV1
 const SITE_UPSTREAM_AC_CAPACITY_W = PV14000_AC_CAPACITY_W + PV9000_AC_CAPACITY_W;
 const EXPECTED_MONITORED_SYSTEMS = PV14000_CONFIGURED ? 3 : 2;
 
-const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 4 }) : null;
+const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 4, connectionTimeoutMillis: 5000, query_timeout: 10000 }) : null;
 let dbReady = false;
 let lastStoredAt = 0;
 let lastLiveCache = null;
@@ -910,79 +911,26 @@ function sourceHint(label, error) {
   return error.message;
 }
 
-// --- Render free-tier cold-start helper -----------------------------------
-// When Master wakes, its upstream dashboards may still be sleeping. Wake all
-// configured sources in parallel and keep retrying until their real JSON API
-// responds. This removes the need to manually open every Render project.
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-let wakeInFlight = null;
-let lastWakeResult = null;
-let lastWakeAt = 0;
-
-async function wakeOneSource(label, operation, { maxWaitMs = 90000, retryMs = 4500 } = {}) {
-  const startedAt = Date.now();
-  let attempts = 0;
-  let lastError = "";
-
-  while (Date.now() - startedAt < maxWaitMs) {
-    attempts += 1;
-    try {
-      await operation();
-      return { ready: true, configured: true, attempts, elapsedMs: Date.now() - startedAt };
-    } catch (error) {
-      lastError = error?.message || String(error);
-      // Bad credentials/configuration will not improve by waiting.
-      if (error?.status === 401 || error?.status === 403 || error?.code === "NOT_CONFIGURED") break;
-    }
-
-    const remaining = maxWaitMs - (Date.now() - startedAt);
-    if (remaining <= 0) break;
-    await sleep(Math.min(retryMs, remaining));
-  }
-
-  return { ready: false, configured: true, attempts, elapsedMs: Date.now() - startedAt, error: lastError || `${label} did not become ready` };
+// Start configured feeds in parallel. Render cold starts can outlast a UI request;
+// the source request continues while /live returns the feeds already available.
+function sourceTimeout(base) {
+  try { return new URL(base).hostname.endsWith(".onrender.com") ? 75000 : 16000; }
+  catch { return 16000; }
 }
-
-async function wakeAllSources({ force = false } = {}) {
-  // If everything was confirmed ready recently, avoid unnecessary extra calls.
-  if (!force && lastWakeResult && lastWakeResult.allReady && Date.now() - lastWakeAt < 10 * 60 * 1000) {
-    return { ...lastWakeResult, cached: true };
-  }
-  if (wakeInFlight) return wakeInFlight;
-
-  wakeInFlight = (async () => {
-    const checks = [
-      ["pv14000", PV14000_CONFIGURED, () => PV14000_API_BASE
-        ? getPv14000Json("/api/live?fresh=1", { timeoutMs: 14000 })
-        : Promise.resolve({ configured: true, transport: PV14000_TRANSPORT })],
-      ["pv9000", Boolean(PV9000_API_BASE), () => getPv9000Json("/api/live?fresh=1", { timeoutMs: 14000 })],
-      ["matrix", Boolean(MATRIX_API_BASE), () => getJson(`${MATRIX_API_BASE}/api/matrix`, { timeoutMs: 14000 })],
-      ["tuya", Boolean(TUYA_API_BASE), () => getJson(`${TUYA_API_BASE}/api/meter`, { timeoutMs: 14000 })]
-    ];
-
-    const pairs = await Promise.all(checks.map(async ([key, configured, operation]) => {
-      if (!configured) return [key, { ready: false, configured: false, skipped: true, attempts: 0, elapsedMs: 0 }];
-      return [key, await wakeOneSource(key, operation)];
-    }));
-
-    const sources = Object.fromEntries(pairs);
-    const configuredEntries = Object.values(sources).filter((x) => x.configured);
-    const readyCount = configuredEntries.filter((x) => x.ready).length;
-    const result = {
-      ok: readyCount > 0,
-      allReady: configuredEntries.length > 0 && readyCount === configuredEntries.length,
-      readyCount,
-      totalConfigured: configuredEntries.length,
-      sources,
-      updatedAt: Date.now(),
-      note: "Cold-start wake only; no always-on keepalive is used."
-    };
-    lastWakeAt = Date.now();
-    lastWakeResult = result;
-    return result;
-  })().finally(() => { wakeInFlight = null; });
-
-  return wakeInFlight;
+const liveSources = createLiveSources({
+  pv14000: { configured: PV14000_CONFIGURED, read: () => getPv14000Json("/api/live", { timeoutMs: sourceTimeout(PV14000_API_BASE) }).then(normalizePv14000) },
+  pv9000: { configured: Boolean(PV9000_API_BASE), read: () => getPv9000Json("/api/live", { timeoutMs: sourceTimeout(PV9000_API_BASE) }).then(normalizePv9000) },
+  matrix: { configured: Boolean(MATRIX_API_BASE), intervalMs: 15000, freshForMs: 30000, read: () => getJson(`${MATRIX_API_BASE}/api/matrix`, { timeoutMs: sourceTimeout(MATRIX_API_BASE) }).then(normalizeMatrixUps) },
+  tuya: { configured: Boolean(TUYA_API_BASE), intervalMs: 10000, freshForMs: 20000, read: () => getJson(`${TUYA_API_BASE}/api/meter`, { timeoutMs: sourceTimeout(TUYA_API_BASE) }).then(normalizeTuyaMeter) }
+});
+function wakeAllSources() {
+  liveSources.refresh();
+  const { sources, warmingUp } = liveSources.snapshot();
+  const configured = Object.values(sources).filter(source => source.configured);
+  const readyCount = configured.filter(source => source.ready).length;
+  return { ok: true, started: true, allReady: readyCount === configured.length && readyCount > 0,
+    readyCount, totalConfigured: configured.length, sources, warmingUp, updatedAt: Date.now(),
+    note: "Sources connect automatically while the live screen remains available." };
 }
 
 async function initDb() {
@@ -1109,25 +1057,21 @@ async function storeSample(live, force = false) {
   }
 }
 
-async function fetchLive({ store = true, cacheMs = 4500 } = {}) {
+async function fetchLive({ store = true, cacheMs = 1000 } = {}) {
   if (lastLiveCache && Date.now() - lastLiveCacheAt < cacheMs) {
     if (store) storeSample(lastLiveCache).catch(() => {});
     return lastLiveCache;
   }
   if (!liveInFlight) liveInFlight = collectLive().finally(() => { liveInFlight = null; });
   const result = await liveInFlight;
-  if (store) await storeSample(result);
+  if (store) storeSample(result).catch(() => {});
   return result;
 }
 async function collectLive() {
   const systems = {};
   const errors = {};
-  const [aResult, bResult, uResult, tResult] = await Promise.allSettled([
-    PV14000_CONFIGURED ? getPv14000Json("/api/live?fresh=1").then(normalizePv14000) : Promise.resolve(null),
-    getPv9000Json("/api/live").then(normalizePv9000),
-    getJson(`${MATRIX_API_BASE}/api/matrix`).then(normalizeMatrixUps),
-    getJson(`${TUYA_API_BASE}/api/meter`).then(normalizeTuyaMeter)
-  ]);
+  const { results, sources, warmingUp } = await liveSources.sample();
+  const { pv14000: aResult, pv9000: bResult, matrix: uResult, tuya: tResult } = results;
 
   if (aResult.status === "fulfilled" && aResult.value) {
     systems.pv14000 = aResult.value;
@@ -1135,18 +1079,21 @@ async function collectLive() {
   } else if (PV14000_CONFIGURED && aResult.status === "rejected") {
     errors.pv14000 = sourceHint("PV14000", aResult.reason);
   }
-  if (bResult.status === "fulfilled") systems.pv9000 = bResult.value;
-  else errors.pv9000 = sourceHint("PV9000", bResult.reason);
-  if (uResult.status === "fulfilled") systems.matrix = uResult.value;
-  else errors.matrix = uResult.reason.message;
+  if (bResult.status === "fulfilled" && bResult.value) systems.pv9000 = bResult.value;
+  else if (bResult.status === "rejected") errors.pv9000 = sourceHint("PV9000", bResult.reason);
+  if (uResult.status === "fulfilled" && uResult.value) systems.matrix = uResult.value;
+  else if (uResult.status === "rejected") errors.matrix = sourceHint("Matrix", uResult.reason);
   let meter = null;
   if (tResult.status === "fulfilled") meter = tResult.value;
-  else errors.tuya = tResult.reason.message;
+  else if (tResult.status === "rejected") errors.tuya = sourceHint("Tuya", tResult.reason);
 
   systems.combined = combine(systems.pv14000, systems.pv9000, systems.matrix);
   const connected = [systems.pv14000, systems.pv9000, systems.matrix].filter(Boolean).length;
   const result = {
     ok: connected > 0,
+    warmingUp,
+    sources,
+    startupMode: "automatic-parallel",
     complete: connected === EXPECTED_MONITORED_SYSTEMS,
     connected,
     totalSystems: EXPECTED_MONITORED_SYSTEMS,
@@ -2022,7 +1969,7 @@ export { normalizeDeviceId, normalizePv14000, normalizeEnergy, getJson, fetchLiv
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-    if (url.pathname === "/api/master/wake") return json(res, 200, await wakeAllSources({ force: url.searchParams.get("force") === "1" }));
+    if (url.pathname === "/api/master/wake") return json(res, 200, wakeAllSources());
     if (url.pathname === "/api/master/live") return json(res, 200, await fetchLive());
     if (url.pathname === "/api/master/energy") return json(res, 200, await fetchEnergy(String(url.searchParams.get("period") || "T")));
     if (url.pathname === "/api/master/history") return json(res, 200, await fetchHistory(Math.max(1, Math.min(720, num(url.searchParams.get("hours"), 24)))));
@@ -2099,7 +2046,7 @@ const server = http.createServer(async (req, res) => {
     }));
     if (url.pathname === "/api/health") return json(res, 200, {
       success: true,
-      service: "Raja Fraz Master Solar Command Center - V38.2 Pro Dual Logger",
+      service: "Raja Fraz Master Solar Command Center - V38.3 Automatic Startup",
       pv14000: {
         base: PV14000_API_BASE || null,
         configured: PV14000_CONFIGURED,
@@ -2137,15 +2084,11 @@ const server = http.createServer(async (req, res) => {
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === __filename;
 if (isMain) {
-  await initDb();
   server.listen(PORT, () => {
     console.log(`Raja Fraz Three-Inverter Master Dashboard running on ${PORT}`);
-    // Start waking dependencies as soon as Master itself is awake. The browser's
-    // /api/master/wake call reuses this same in-flight promise.
-    const timer = setTimeout(() => {
-      wakeAllSources().catch((error) => console.error("Source wake-up:", error.message));
-    }, 500);
-    timer.unref?.();
+    // Bind HTTP before database/source startup, so neither can hold the app offline.
+    initDb().catch(error => console.error("History startup:", error.message));
+    wakeAllSources();
   });
 
   setInterval(async () => {

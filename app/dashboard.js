@@ -64,6 +64,7 @@ function fmtCurrent(v){return `${finite(v).toFixed(1)} A`;}
 function fmtPowerCurrent(w,a){return `${fmtPower(w)} • ${fmtCurrent(a)}`;}
 function pv14000ConnectionState(a=live?.systems?.pv14000){
   if(a)return{online:true,pending:false,label:'ONLINE',detail:ageText(a.updatedAt),code:'live'};
+  if(live?.sources?.pv14000?.state==='connecting')return{online:false,pending:true,label:'CONNECTING',detail:'Connecting automatically',code:'connecting'};
   const code=String(live?.telemetryPlan?.pv14000||'temporarily-offline');
   if(code==='temporarily-offline')return{online:false,pending:false,label:'LOGGER OFFLINE',detail:'Dedicated logger connection interrupted',code};
   if(code==='not-configured')return{online:false,pending:false,label:'NOT CONFIGURED',detail:'PV14000 logger mapping is missing',code};
@@ -246,32 +247,24 @@ $('notifyTestAll')?.addEventListener('click',()=>testNotification('all'));
 $('notifyCheckNow')?.addEventListener('click',runNotificationCheck);
 
 async function wakeMasterSources(){
-  set('liveChip','◌ WAKING SOURCES…');
-  $('liveChip')?.classList.remove('live');
-  try{
-    const response=await fetch('/api/master/wake',{cache:'no-store'});
-    const data=await response.json();
-    const ready=finite(data.readyCount); const total=finite(data.totalConfigured);
-    if(data.allReady){
-      set('liveChip','● SOURCES READY');
-      $('liveChip')?.classList.add('live');
-    }else{
-      set('liveChip',`◌ READY ${ready}/${total}`);
-    }
-    return data;
-  }catch(error){
-    set('liveChip','◌ WAKE RETRY');
-    return null;
-  }
+  if(!live)set('liveChip','◌ CONNECTING…');
+  try{return await (await fetch('/api/master/wake',{cache:'no-store'})).json();}
+  catch(_){return null;}
 }
+let liveLoading=false;
 async function loadLive(){
+  if(liveLoading)return;
+  liveLoading=true;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),75000);
   try{
-    const response=await fetch('/api/master/live',{cache:'no-store'});
+    const response=await fetch('/api/master/live',{cache:'no-store',signal:controller.signal});
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
     live=await response.json();
     render();
-    set('liveChip',live.complete?'● LIVE':live.ok?'● PARTIAL':'● OFFLINE');
+    set('liveChip',live.complete?'● LIVE':live.ok?(live.warmingUp?'◌ PARTIAL · CONNECTING':'● PARTIAL'):live.warmingUp?'◌ CONNECTING…':'● FEEDS UNAVAILABLE');
     $('liveChip')?.classList.toggle('live',Boolean(live.ok));
-  }catch(error){set('liveChip','● ERROR');}
+  }catch(error){set('liveChip','◌ RECONNECTING…');}
+  finally{clearTimeout(timer);liveLoading=false;}
 }
 async function loadHistory(hours=24){
   try{
@@ -1111,12 +1104,12 @@ async function start(){
   initTuyaPickers();
   initControlRoom();
   initOperatorTools();
-  await wakeMasterSources();
+  wakeMasterSources();
+  setInterval(loadLive,5000);
   await Promise.allSettled([loadLive(),loadHistory(activeHours),loadEnergy(activeEnergyPeriod),loadAnalytics(),loadTimelineHistory(),loadWeather(),loadTuyaQuickTotals(),loadAiStatus(),loadNotificationStatus()]);
   if(!todayEnergy)todayEnergy=energy?.period==='T'?energy:null;
   await loadSelectedTuyaEnergy();
   renderIntelligenceCenter(); renderCommandView(); renderAiLiveContext(); drawDailyTimeline(); drawUltraPulse();
-  setInterval(loadLive,5000);
   setInterval(()=>loadHistory(activeHours),60000);
   setInterval(()=>loadEnergy(activeEnergyPeriod),60000);
   setInterval(loadAnalytics,30000);

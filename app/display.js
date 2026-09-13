@@ -81,7 +81,20 @@ function renderEnergy(){if(!energy)return;const c=energy.combined||{};set('roomT
 function renderAnalytics(){if(!analytics?.current)return;const cur=analytics.current;if(cur.balanceErrorW!=null)set('flowBalance',`Power balance ${Math.abs(finite(cur.balanceErrorW))<100?'OK':fmtSignedPower(cur.balanceErrorW)}`);}
 
 async function getJson(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error(`${r.status}`);return r.json();}
-async function loadLive(){try{live=await getJson('/api/master/live');failures=0;render();const chip=$('roomLive');chip?.classList.remove('connecting','error','partial','live');if(live.complete){chip?.classList.add('live');set('roomLive','');chip.innerHTML='<i></i><span>LIVE</span>';}else if(live.ok){chip?.classList.add('partial');chip.innerHTML='<i></i><span>PARTIAL</span>';}else{chip?.classList.add('error');chip.innerHTML='<i></i><span>OFFLINE</span>';}}catch(e){failures++;const chip=$('roomLive');chip?.classList.remove('connecting','live','partial');chip?.classList.add('error');if(chip)chip.innerHTML='<i></i><span>RETRYING</span>';if(failures>=12)location.reload();}}
+let liveLoading=false;
+async function loadLive(){
+  if(liveLoading)return;liveLoading=true;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),75000);
+  try{
+    const r=await fetch('/api/master/live',{cache:'no-store',signal:controller.signal});if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    live=await r.json();failures=0;render();
+    const chip=$('roomLive');chip?.classList.remove('connecting','error','partial','live');
+    const state=live.complete?'live':live.ok?'partial':live.warmingUp?'connecting':'error';
+    chip?.classList.add(state);
+    if(chip)chip.innerHTML=`<i></i><span>${live.complete?'LIVE':live.ok?'PARTIAL':live.warmingUp?'CONNECTING':'UNAVAILABLE'}</span>`;
+  }catch(e){failures++;const chip=$('roomLive');chip?.classList.remove('live','partial','error');chip?.classList.add('connecting');if(chip)chip.innerHTML='<i></i><span>RECONNECTING</span>';}
+  finally{clearTimeout(timer);liveLoading=false;}
+}
 async function loadEnergy(){try{energy=await getJson('/api/master/energy?period=T');renderEnergy();}catch(_){}}
 async function loadAnalytics(){try{analytics=await getJson('/api/master/analytics');renderAnalytics();}catch(_){}}
 async function loadWeather(){try{const w=await getJson('/api/master/weather');const d=w.data||{};const t=d.temperature??d.temperature_2m??d.current?.temperature_2m;set('roomWeather',Number.isFinite(Number(t))?`Gujrat • ${Math.round(Number(t))}°C`:'Gujrat • Weather');}catch(_){set('roomWeather','Gujrat • Weather');}}
@@ -93,5 +106,5 @@ $('fullscreenBtn')?.addEventListener('click',toggleFullscreen);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&document.fullscreenElement)requestWakeLock();});
 function cursorActivity(){document.body.classList.remove('cursorHidden');clearTimeout(cursorTimer);cursorTimer=setTimeout(()=>document.body.classList.add('cursorHidden'),8000);}['mousemove','mousedown','touchstart','keydown'].forEach(e=>window.addEventListener(e,cursorActivity,{passive:true}));cursorActivity();
 
-async function start(){updateClock();setInterval(updateClock,1000);await wakeSources();await Promise.allSettled([loadLive(),loadEnergy(),loadAnalytics(),loadWeather()]);setInterval(loadLive,5000);setInterval(loadAnalytics,30000);setInterval(loadEnergy,60000);setInterval(loadWeather,600000);}
+async function start(){updateClock();setInterval(updateClock,1000);wakeSources();setInterval(loadLive,5000);await Promise.allSettled([loadLive(),loadEnergy(),loadAnalytics(),loadWeather()]);setInterval(loadAnalytics,30000);setInterval(loadEnergy,60000);setInterval(loadWeather,600000);}
 start();
