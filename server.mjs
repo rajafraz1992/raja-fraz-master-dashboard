@@ -146,7 +146,7 @@ const CURRENT_MONITORED_PV_W = PV9000_PV_INSTALLED_W + (PV14000_CONFIGURED ? PV1
 const SITE_UPSTREAM_AC_CAPACITY_W = PV14000_AC_CAPACITY_W + PV9000_AC_CAPACITY_W;
 const EXPECTED_MONITORED_SYSTEMS = PV14000_CONFIGURED ? 3 : 2;
 
-const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 4, connectionTimeoutMillis: 5000, query_timeout: 10000 }) : null;
+const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 4 }) : null;
 let dbReady = false;
 let lastStoredAt = 0;
 let lastLiveCache = null;
