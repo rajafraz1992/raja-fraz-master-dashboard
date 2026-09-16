@@ -9,6 +9,8 @@ const MONITORED_PV_CAPACITY_W = 11140;
 const MONITORED_SOLAR_KWP = 11.14;
 const PV14000_SOLAR_KWP = 6.78;
 const PV9000_SOLAR_KWP = 4.36;
+const GRID_IMPORT_CAPACITY_W = 5000;
+const GRID_EXPORT_CAPACITY_W = 6000;
 const MONITORED_SYSTEM_COUNT = 3; // PV14000 + PV9000 + Matrix
 const MONITORED_SOURCE_COUNT = 4; // both solar inverters + Matrix + Tuya
 let live = null;
@@ -78,6 +80,7 @@ function gridMode(v) { const n=finite(v); return Math.abs(n)<30?'IDLE':n>=0?'IMP
 function ageText(ts) { const s=Math.max(0,Math.round((Date.now()-finite(ts,Date.now()))/1000)); if(s<5)return'Updated now'; if(s<60)return`Updated ${s}s ago`; return`Updated ${Math.floor(s/60)}m ago`; }
 function pct(v,max) { return Math.max(0,Math.min(100,Math.abs(finite(v))/Math.max(1,max)*100)); }
 function gauge(id,value,max,mode) { const el=$(id); if(!el)return; el.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`; el.classList.remove('red','green'); if(mode==='grid')el.classList.add(finite(value)>=0?'red':'green'); setLiveGaugePercent(id.replace(/Gauge$/,'Percent'),value,max); }
+function gridGauge(id,value) { gauge(id,value,finite(value)<0?GRID_EXPORT_CAPACITY_W:GRID_IMPORT_CAPACITY_W,'grid'); }
 function fixedGauge(id,value,max,colorClass) { const el=$(id); if(!el)return; el.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`; el.classList.remove('red','green'); if(colorClass)el.classList.add(colorClass); setLiveGaugePercent(id.replace(/Gauge$/,'Percent'),value,max); }
 function liveCapacityPct(value,max) { return Math.max(0,Math.abs(finite(value))/Math.max(1,max)*100); }
 function setLiveGaugePercent(id,value,max) {
@@ -451,19 +454,19 @@ function renderPv14000(a){
     const state=pv14000ConnectionState();
     set('pv14000SolarHero','OFFLINE');set('pv14000PvSplit','6.78 kWp array • dedicated logger temporarily unavailable');
     set('pv14000LoadGaugeText','--');set('pv14000SolarGaugeText','--');set('pv14000GridGaugeText','--');set('pv14000GridMode',state.label);set('pv14000GridV','-- V • -- A');set('pv14000TodaySolar','--');set('pv14000Temp','--');set('pv14000Current','-- W • -- A');set('pv14000OutputCurrent','-- W • -- A');
-    gauge('pv14000LoadGauge',null,10000);gauge('pv14000SolarGauge',null,6780);gauge('pv14000GridGauge',null,10000,'grid');return;
+    gauge('pv14000LoadGauge',null,10000);gauge('pv14000SolarGauge',null,6780);gridGauge('pv14000GridGauge',null);return;
   }
   set('pv14000SolarHero',fmtPower(a.solarW)); set('pv14000PvSplit',`PV1 ${fmtPower(a.pv1W)} • PV2 ${fmtPower(a.pv2W)}`);
   set('pv14000LoadGaugeText',fmtPower(a.loadW)); set('pv14000SolarGaugeText',fmtPower(a.solarW)); set('pv14000GridGaugeText',fmtPower(a.gridW));
   set('pv14000GridMode',gridMode(a.gridW)); set('pv14000GridV',finite(a.gridV)>0?`${finite(a.gridV).toFixed(1)} V • ${fmtCurrent(gridCurrentA(a))}`:`${fmtCurrent(gridCurrentA(a))} • 230 V nominal calc`); set('pv14000TodaySolar',fmtKwh(a.todaySolar)); set('pv14000Temp',`${Math.round(finite(a.temp))}°C`); set('pv14000Current',fmtPowerCurrent(a.solarW,pvCurrentA(a))); set('pv14000OutputCurrent',fmtPowerCurrent(a.loadW,outputCurrentA(a)));
-  gauge('pv14000LoadGauge',a.loadW,10000); gauge('pv14000SolarGauge',a.solarW,6780); gauge('pv14000GridGauge',a.gridW,10000,'grid');
+  gauge('pv14000LoadGauge',a.loadW,10000); gauge('pv14000SolarGauge',a.solarW,6780); gridGauge('pv14000GridGauge',a.gridW);
 }
 function renderPv9000(b){
-  if(!b){blank(['pv9000SolarHero','pv9000PvSplit','pv9000LoadGaugeText','pv9000SolarGaugeText','pv9000GridGaugeText','pv9000GridMode','pv9000SmartGaugeText','pv9000TodaySolar','pv9000Temp']);set('pv9000GridV','-- V • -- A');set('pv9000Current','-- W • -- A');set('pv9000OutputCurrent','-- W • -- A');gauge('pv9000LoadGauge',null,6000);gauge('pv9000SolarGauge',null,4360);gauge('pv9000GridGauge',null,6000,'grid');gauge('pv9000SmartGauge',null,6000);return;}
+  if(!b){blank(['pv9000SolarHero','pv9000PvSplit','pv9000LoadGaugeText','pv9000SolarGaugeText','pv9000GridGaugeText','pv9000GridMode','pv9000SmartGaugeText','pv9000TodaySolar','pv9000Temp']);set('pv9000GridV','-- V • -- A');set('pv9000Current','-- W • -- A');set('pv9000OutputCurrent','-- W • -- A');gauge('pv9000LoadGauge',null,6000);gauge('pv9000SolarGauge',null,4360);gridGauge('pv9000GridGauge',null);gauge('pv9000SmartGauge',null,6000);return;}
   set('pv9000SolarHero',fmtPower(b.solarW)); set('pv9000PvSplit',`STRING 1 ${fmtPower(b.pv1W)} • 8×545 W • STRING 2 NOT IN USE`);
   set('pv9000LoadGaugeText',fmtPower(b.loadW)); set('pv9000SolarGaugeText',fmtPower(b.solarW)); set('pv9000GridGaugeText',fmtPower(b.gridW)); set('pv9000SmartGaugeText',fmtPower(b.smartLoadW));
   set('pv9000GridMode',gridMode(b.gridW)); set('pv9000GridV',finite(b.gridV)>0?`${finite(b.gridV).toFixed(1)} V • ${fmtCurrent(gridCurrentA(b))}`:`${fmtCurrent(gridCurrentA(b))} • 230 V nominal calc`); set('pv9000TodaySolar',fmtKwh(b.todaySolar)); set('pv9000Temp',`${Math.round(finite(b.temp))}°C`); set('pv9000Current',fmtPowerCurrent(b.solarW,pvCurrentA(b))); set('pv9000OutputCurrent',fmtPowerCurrent(b.loadW,outputCurrentA(b)));
-  gauge('pv9000LoadGauge',b.loadW,6000); gauge('pv9000SolarGauge',b.solarW,4360); gauge('pv9000GridGauge',b.gridW,6000,'grid'); gauge('pv9000SmartGauge',b.smartLoadW,6000);
+  gauge('pv9000LoadGauge',b.loadW,6000); gauge('pv9000SolarGauge',b.solarW,4360); gridGauge('pv9000GridGauge',b.gridW); gauge('pv9000SmartGauge',b.smartLoadW,6000);
 }
 function renderMatrix(u){
   if(!u){blank(['matrixInputGaugeText','matrixInputV','matrixLoadGaugeText','matrixBattery','matrixBatteryPower','matrixTemp']);gauge('matrixInputGauge',null,6000);gauge('matrixLoadGauge',null,6000);return;}
@@ -476,7 +479,7 @@ function renderTuya(m){
   if(!m){
     blank(['tuyaImportGaugeText','tuyaExportGaugeText','tuyaImportPercent','tuyaExportPercent','tuyaImportTotal','tuyaExportTotal','tuyaVoltage','tuyaCurrent','tuyaPf','tuyaTemp']);set('tuyaImportCurrent','-- W • -- A • FROM GRID');set('tuyaExportCurrent','-- W • -- A • TO GRID');
     $('tuyaImportPercent')?.classList.remove('over'); $('tuyaExportPercent')?.classList.remove('over');
-    fixedGauge('tuyaImportGauge',null,5000,'red'); fixedGauge('tuyaExportGauge',null,6000,'green');
+    fixedGauge('tuyaImportGauge',null,GRID_IMPORT_CAPACITY_W,'red'); fixedGauge('tuyaExportGauge',null,GRID_EXPORT_CAPACITY_W,'green');
     set('tuyaMode','OFFLINE'); if(modeEl)modeEl.className='tuyaDirection idle'; return;
   }
   const mode=String(m.mode||'IDLE').toUpperCase();
@@ -490,7 +493,7 @@ function renderTuya(m){
   set('tuyaCurrent',m.currentA==null?'-- A':`${finite(m.currentA).toFixed(3)} A`);
   set('tuyaPf',m.powerFactor==null?'--':finite(m.powerFactor).toFixed(3));
   set('tuyaTemp',m.temperatureC==null?'-- °C':`${Math.round(finite(m.temperatureC))} °C`);
-  fixedGauge('tuyaImportGauge',m.importW,5000,'red'); fixedGauge('tuyaExportGauge',m.exportW,6000,'green');
+  fixedGauge('tuyaImportGauge',m.importW,GRID_IMPORT_CAPACITY_W,'red'); fixedGauge('tuyaExportGauge',m.exportW,GRID_EXPORT_CAPACITY_W,'green');
   set('tuyaMode',mode); if(modeEl)modeEl.className=`tuyaDirection ${mode==='IMPORTING'?'importing':mode==='EXPORTING'?'exporting':'idle'}`;
 }
 function renderCombined(c,a,b,u,m){
@@ -500,7 +503,7 @@ function renderCombined(c,a,b,u,m){
   set('combinedSolarGaugeText',fmtPower(c.solarW)); set('combinedLoadGaugeText',fmtPower(c.siteDemandW)); set('combinedGridGaugeText',fmtPower(combinedGridW)); set('combinedGridMode',gridMode(combinedGridW)); set('combinedGridCurrentGauge',fmtCurrent(combinedGridA));
   const batteryMode=batteryGauge('combinedBatteryGauge',u?.batteryW,6000,u?.batteryMode);
   set('combinedBatteryGaugeText',u?fmtPower(u.batteryW):'--'); set('combinedBatteryMode',u?batteryMode:'--'); set('combinedBatteryVoltage',u?`${finite(u.batteryV).toFixed(1)} V`:'-- V');
-  gauge('combinedSolarGauge',a||b?c.solarW:null,monitoredPvCapacityW()); gauge('combinedLoadGauge',a||b?c.siteDemandW:null,16000); gauge('combinedGridGauge',physicalGrid!=null||a||b?combinedGridW:null,16000,'grid');
+  gauge('combinedSolarGauge',a||b?c.solarW:null,monitoredPvCapacityW()); gauge('combinedLoadGauge',a||b?c.siteDemandW:null,16000); gridGauge('combinedGridGauge',physicalGrid!=null||a||b?combinedGridW:null);
   set('combinedPvCurrent',fmtPowerCurrent(c.solarW,pvCurrentA(a)+pvCurrentA(b)));
   set('combinedOutputCurrent',fmtPowerCurrent(c.siteDemandW,finite(c.outputCurrentA,outputCurrentA(a)+outputCurrentA(b))));
   set('combinedGridCurrent',`${fmtPowerCurrent(combinedGridW,combinedGridA)} • ${gridMode(combinedGridW)} • ${m?.online?'PHYSICAL':'INVERTER'}`);
