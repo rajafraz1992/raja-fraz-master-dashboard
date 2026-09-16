@@ -90,7 +90,6 @@ function setLiveGaugePercent(id,value,max) {
   const available=value!=null&&value!==''&&Number.isFinite(Number(value))&&Number.isFinite(Number(max))&&Number(max)>0;
   const p=available?liveCapacityPct(value,max):null;
   const el=$(id);
-  const previous=el?.textContent;
   set(id,p==null?'--%':`${p.toFixed(1)}%`);
   if(el){
     el.classList.toggle('over',p!=null&&p>100);
@@ -98,16 +97,11 @@ function setLiveGaugePercent(id,value,max) {
     el.setAttribute('aria-label',p==null?'Live percentage unavailable':`${p.toFixed(1)}% of ${fmtPower(max)} ${basis}`);
     const card=el.closest('.masterGauge');
     if(card){
-      const arc=$(id.replace(/Percent$/,'Gauge'));
-      const mask=card.querySelector('.gSweepMask');
-      card.classList.toggle('gaugeActive',p!=null&&p>0);
-      if(mask)mask.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`;
-      const tone=['red','green','amber','blue'].find(name=>arc?.classList.contains(name))||'teal';
-      card.style.setProperty('--gauge-accent',`var(--${tone})`);
-      if(previous!==el.textContent&&p!=null&&!document.hidden&&card.closest('.view')?.classList.contains('active')&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
-        el.getAnimations().forEach(animation=>animation.cancel());
-        el.animate([{opacity:0.65},{opacity:1}],{duration:650,easing:'ease-out'});
-      }
+      const needle=card.querySelector('.gNeedle');
+      card.classList.toggle('gaugeAvailable',p!=null);
+      if(needle)needle.style.transform=`rotate(${(pct(value,max)*1.8).toFixed(2)}deg)`;
+      const scale=card.querySelector('.gNeedleScale');
+      if(scale)scale.textContent=id==='combinedGridPercent'?`${fmtPower(max)} ${finite(value)<0?'export':'import'}`:`${fmtPower(max)} scale`;
     }
   }
 }
