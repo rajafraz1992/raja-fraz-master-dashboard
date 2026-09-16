@@ -237,3 +237,10 @@ body.controlRoomActive{background:#031827}.controlRoomActive .siteHeader{display
 .flowNode.pending{opacity:1;border-color:#e5c674;background:linear-gradient(145deg,#fff9e9,#fff)}.flowNode.pending::after{background:#e4ae27}.flowNode.pending .flowNodeCopy b{font-size:13px;color:#9b6900}.flowNode.pending .flowNodeMedia{filter:saturate(.65)}
 .ultraAssetState.pending{color:#ffd36b;background:rgba(230,171,50,.14)}
 .controlAssetRail .pending i{background:#eab93d;box-shadow:0 0 0 4px rgba(234,185,61,.09),0 0 12px rgba(234,185,61,.35)}.controlAssetRail .pending b{color:#ffd46f}
+
+/* Keep live percentage above power inside the same responsive gauge arc. */
+#dashboard .gPercent{fill:var(--text);font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+#dashboard .gReading{fill:var(--text);font-size:27px;font-weight:900;font-variant-numeric:tabular-nums}
+#dashboard .importGauge .gPercent,#dashboard .importGauge .gReading{fill:#b52f3b}
+#dashboard .exportGauge .gPercent,#dashboard .exportGauge .gReading{fill:#128255}
+#dashboard .gPercent.over{fill:var(--red)}
