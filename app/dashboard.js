@@ -11,6 +11,7 @@ const PV14000_SOLAR_KWP = 6.78;
 const PV9000_SOLAR_KWP = 4.36;
 const GRID_IMPORT_CAPACITY_W = 5000;
 const GRID_EXPORT_CAPACITY_W = 6000;
+const DASHBOARD_UNIT_RATE_PKR = 60;
 const MONITORED_SYSTEM_COUNT = 3; // PV14000 + PV9000 + Matrix
 const MONITORED_SOURCE_COUNT = 4; // both solar inverters + Matrix + Tuya
 let live = null;
@@ -23,6 +24,8 @@ let tuyaQuickLoaded = false;
 let analytics = null;
 let timelineHistory = { pv14000: [], pv9000: [], matrix: [], combined: [] };
 let todayEnergy = null;
+let todayEnergyDay = null;
+let todayEnergyUpdatedAt = 0;
 let connectionAlertCount = 0;
 let smartAlertCount = 0;
 let aiStatusData = null;
@@ -86,12 +89,26 @@ function liveCapacityPct(value,max) { return Math.max(0,Math.abs(finite(value))/
 function setLiveGaugePercent(id,value,max) {
   const available=value!=null&&value!==''&&Number.isFinite(Number(value))&&Number.isFinite(Number(max))&&Number(max)>0;
   const p=available?liveCapacityPct(value,max):null;
-  set(id,p==null?'--%':`${p.toFixed(1)}%`);
   const el=$(id);
+  const previous=el?.textContent;
+  set(id,p==null?'--%':`${p.toFixed(1)}%`);
   if(el){
     el.classList.toggle('over',p!=null&&p>100);
     const basis=id==='combinedBatteryPercent'?'battery power scale (not state of charge)':'gauge scale';
     el.setAttribute('aria-label',p==null?'Live percentage unavailable':`${p.toFixed(1)}% of ${fmtPower(max)} ${basis}`);
+    const card=el.closest('.masterGauge');
+    if(card){
+      const arc=$(id.replace(/Percent$/,'Gauge'));
+      const mask=card.querySelector('.gSweepMask');
+      card.classList.toggle('gaugeActive',p!=null&&p>0);
+      if(mask)mask.style.strokeDasharray=`${pct(value,max).toFixed(2)} 100`;
+      const tone=['red','green','amber','blue'].find(name=>arc?.classList.contains(name))||'teal';
+      card.style.setProperty('--gauge-accent',`var(--${tone})`);
+      if(previous!==el.textContent&&p!=null&&!document.hidden&&card.closest('.view')?.classList.contains('active')&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+        el.getAnimations().forEach(animation=>animation.cancel());
+        el.animate([{opacity:0.65},{opacity:1}],{duration:650,easing:'ease-out'});
+      }
+    }
   }
 }
 function batteryFlowMode(value, modeText='') { const m=String(modeText||'').toLowerCase(); if(m.includes('dis')) return 'DISCHARGING'; if(m.includes('char')) return 'CHARGING'; const n=finite(value); if(Math.abs(n)<20) return 'IDLE'; return n>=0 ? 'CHARGING' : 'DISCHARGING'; }
@@ -105,6 +122,32 @@ function pkToday(){const p=pkParts();return `${p.year}-${p.month}-${p.day}`;}
 function pkMonth(){const p=pkParts();return `${p.year}-${p.month}`;}
 function nullableKwh(v){return v==null||!Number.isFinite(Number(v))?'-- kWh':`${Number(v).toFixed(2)} kWh`;}
 function fmtPkr(v){return `PKR ${Math.round(finite(v)).toLocaleString('en-PK')}`;}
+function rememberTodayEnergy(data,day){
+  if(data?.period!=='T')return;
+  todayEnergy=data;todayEnergyDay=day;todayEnergyUpdatedAt=Date.now();
+  renderDashboardCash();
+}
+function dashboardCashValues(report=todayEnergy,systems=live?.systems||{},reportDay=todayEnergyDay,day=pkToday()){
+  const measured=v=>v!=null&&v!==''&&Number.isFinite(Number(v))&&Number(v)>=0?Number(v):null;
+  const today=report?.period==='T'&&reportDay===day?report:null;
+  const units=key=>today&&!today.errors?.[key]?measured(today[key]?.solarKwh):null;
+  const pv14000Kwh=units('pv14000'),pv9000Kwh=units('pv9000');
+  const totalKwh=pv14000Kwh!=null&&pv9000Kwh!=null?pv14000Kwh+pv9000Kwh:null;
+  const watts=key=>systems[key]?.online===false?null:measured(systems[key]?.solarW);
+  const a=watts('pv14000'),b=watts('pv9000');
+  return{pv14000Kwh,pv9000Kwh,totalKwh,livePkrPerHour:a!=null&&b!=null?(a+b)/1000*DASHBOARD_UNIT_RATE_PKR:null};
+}
+function renderDashboardCash(){
+  const cash=dashboardCashValues();
+  for(const [key,kwh] of [['Combined',cash.totalKwh],['Pv14000',cash.pv14000Kwh],['Pv9000',cash.pv9000Kwh]]){
+    set(`cash${key}`,kwh==null?'PKR --':fmtPkr(kwh*DASHBOARD_UNIT_RATE_PKR));
+    set(`cash${key}Units`,kwh==null?'Daily energy report unavailable':`${kwh.toFixed(2)} units today`);
+  }
+  set('cashLiveRate',cash.livePkrPerHour==null?'PKR -- /h':`${fmtPkr(cash.livePkrPerHour)} /h`);
+  set('cashLiveStatus',cash.livePkrPerHour==null?'Waiting for both inverter readings':'At current solar output • refresh 5s');
+  const count=[cash.pv14000Kwh,cash.pv9000Kwh].filter(v=>v!=null).length;
+  set('cashReportStatus',count?`${count}/2 daily reports • updated ${fmtTimePk(todayEnergyUpdatedAt)} PKT`:'Waiting for today’s energy reports');
+}
 function fmtTimePk(ts){if(!ts)return'--';const d=new Date(ts);if(!Number.isFinite(d.getTime()))return'--';return d.toLocaleTimeString('en-GB',{timeZone:'Asia/Karachi',hour:'2-digit',minute:'2-digit',hour12:false});}
 function fmtDuration(hours){const h=Number(hours);if(!Number.isFinite(h)||h<=0)return'--';const whole=Math.floor(h),mins=Math.round((h-whole)*60);return whole>0?`${whole}h ${mins}m`:`${mins} min`;}
 function clamp(v,min=0,max=100){return Math.max(min,Math.min(max,finite(v)));}
@@ -310,14 +353,17 @@ async function loadTimelineHistory(){
   }catch(_error){}
 }
 async function loadTodayEnergy(){
-  if(activeEnergyPeriod==='T' && energy){todayEnergy=energy;renderIntelligenceCenter();renderOperatorTools();return;}
-  try{const r=await fetch('/api/master/energy?period=T',{cache:'no-store'});todayEnergy=await r.json();renderIntelligenceCenter();renderOperatorTools();}catch(_error){}
+  if(activeEnergyPeriod==='T'&&energy?.period==='T'&&todayEnergyDay===pkToday()){renderDashboardCash();renderIntelligenceCenter();renderOperatorTools();return;}
+  const day=pkToday();
+  try{const r=await fetch('/api/master/energy?period=T',{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);rememberTodayEnergy(await r.json(),day);renderIntelligenceCenter();renderOperatorTools();}catch(_error){}
 }
 async function loadEnergy(period='T'){
+  const day=pkToday();
   try{
     const response=await fetch(`/api/master/energy?period=${encodeURIComponent(period)}`,{cache:'no-store'});
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
     energy=await response.json();
-    if(period==='T') todayEnergy=energy;
+    if(period==='T')rememberTodayEnergy(energy,day);
     renderEnergy();
     renderIntelligenceCenter();
     renderOperatorTools();
@@ -415,6 +461,7 @@ function render(){
   renderMatrix(u);
   renderTuya(m);
   renderCombined(c,a,b,u,m);
+  renderDashboardCash();
   renderQuickTotals(c);
   renderDetailPages(a,b,u,c);
   renderHealth(a,b,u,c,m,live.errors||{});
@@ -1126,7 +1173,7 @@ async function start(){
   setInterval(()=>loadEnergy(activeEnergyPeriod),60000);
   setInterval(loadAnalytics,30000);
   setInterval(loadTimelineHistory,60000);
-  setInterval(loadTodayEnergy,300000);
+  setInterval(loadTodayEnergy,60000);
   setInterval(loadTuyaQuickTotals,300000);
   setInterval(loadWeather,600000);
 }
