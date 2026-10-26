@@ -1,0 +1,1 @@
+{"name":"raja-energy-studio","version":"1.0.0","private":true,"type":"module","engines":{"node":">=22"},"scripts":{"dev":"node server.mjs","start":"node server.mjs","test":"node --test test/*.test.mjs","check":"node --check server.mjs && node --check public/app.js && node --test test/*.test.mjs"}}

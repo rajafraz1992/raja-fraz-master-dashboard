@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {solarReading,batteryReading,totals,sourceTime,cleanHistory,pkDay} from '../lib/telemetry.mjs';
+const now=Date.UTC(2026,9,26,7,30);
+const raw={ok:true,data:{dataDTO:{solarW:4000,gridW:-3900,acOutW:50,gridV:241,realTime:'26-10-2026 12:30',fault:'NO'}}};
+test('Pakistan timestamp and signed export survive normalization',()=>{const r=solarReading(raw,'pv14000',now);assert.equal(r.timestamp,now);assert.equal(r.status,'live');assert.equal(r.gridW,-3900);});
+test('UTC source timestamp takes precedence',()=>{assert.equal(sourceTime({realTime:'wrong',timeDate:{dateTime:{date:{year:2026,month:10,day:26},time:{hour:7,minute:30,second:0}},offset:{totalSeconds:0}}}),now);});
+test('unknown time and offline flag cannot become live',()=>{assert.equal(solarReading({...raw,data:{solarW:4000}},'pv14000',now).status,'stale');assert.equal(solarReading({...raw,data:{...raw.data.dataDTO,online:false}},'pv14000',now).status,'stale');});
+test('only two fresh solar inverters contribute to totals',()=>{const s={pv14000:solarReading(raw,'pv14000',now),pv9000:solarReading(raw,'pv9000',now),matrix:{solarW:999999,loadW:999999,status:'live',timestamp:now}};assert.equal(totals(s,{},now).solarW,8000);s.pv9000.status='stale';assert.equal(totals(s,{},now).solarW,null);});
+test('matrix strips non-battery fields and rejects old serial',()=>{const data={scope:'battery_only',deviceId:'221101401',timestamp:now,status:'live',batterySoc:70,batteryPower:-250,solarW:9999};const b=batteryReading({ok:true,data},'221101401',now);assert.equal(b.mode,'charging');assert.equal(b.solarW,undefined);assert.equal(batteryReading({ok:true,data:{...data,deviceId:'0230306052'}},'221101401',now).soc,null);});
+test('stale battery remains unavailable even when received now',()=>{const b=batteryReading({ok:true,data:{scope:'battery_only',deviceId:'221101401',timestamp:now-86400000,status:'live',batterySoc:0}},'221101401',now);assert.equal(b.soc,null);assert.equal(b.status,'stale');});
+test('energy date and transport age gate daily totals',()=>{const s={pv14000:solarReading(raw,'pv14000',now),pv9000:solarReading(raw,'pv9000',now)};const e={date:pkDay(now),receivedAt:now,solar:10};assert.equal(totals(s,{pv14000:e,pv9000:e},now).todaySolar,20);assert.equal(totals(s,{pv14000:e,pv9000:{...e,date:'2026-10-25'}},now).todaySolar,null);});
+test('history keeps missing values as missing and removes invalid timestamps',()=>{const h=cleanHistory({ok:true,data:[{timestamp:now,solarW:0},{timestamp:null,solarW:9},{timestamp:now+900000,solarW:8}]},now);assert.equal(h.length,1);assert.equal(h[0].solarW,0);assert.equal(h[0].gridV,null);});
