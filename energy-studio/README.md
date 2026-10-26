@@ -4,6 +4,8 @@ Read-only dashboard for Raja Fraz's PV14000, PV9000 and Matrix battery. Run `npm
 
 ## Scope and accuracy
 
+- The visible dashboard refreshes every 5 seconds. Solar live APIs and the Matrix battery bridge are checked at most once per 5 seconds, with shared in-flight requests and error backoff. Actual measurement frequency depends on the upstream providers; the Matrix bridge retains its existing SOLARMAN cache. Daily totals and upstream history refresh once per minute.
+- Live Gauges shows two PV output dials, two grid voltage dials with a 240 V observation marker, combined inverter load, and Matrix battery state of charge. Dial scales are labelled; missing or stale readings show no pointer or fill.
 - Only PV14000 and PV9000 contribute to solar, inverter output load, grid and daily energy totals. These are inverter readings, not a utility meter or a whole-home consumption measurement.
 - Matrix uses the battery-only bridge `/api/battery`. Expected current serial is checked server-side. Matrix solar, load and grid fields never leave the normalizer and never enter totals.
 - Solar freshness is 3 minutes; Matrix freshness is 15 minutes for its slower cloud collection. Source timestamps, not HTTP receipt time, determine freshness. Partial totals and stale battery readings are hidden.

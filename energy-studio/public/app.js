@@ -66,7 +66,35 @@ function render(){
   $('#battery-note').textContent=batteryOk?`Device reading ${age(b.timestamp)}. Matrix contributes battery information only.`:valid(b.timestamp)?`Last device record: ${dateFormat.format(b.timestamp)} · ${at(b.timestamp)} PKT.`:'Battery feed is configured for your current Matrix inverter.';
   $('#voltage-mini').innerHTML=Object.keys(names).map(id=>{const r=solar[id],v=transport&&current(r)?r.gridV:null;return `<div class="watch-row"><span>${names[id]}</span><strong class="${v>240?'high':''}">${fmt(v)} <small>V</small></strong></div>`;}).join('');
   $('#last-sync').textContent=state.lastFetch?`${state.transportError?'Last response':'Updated'} ${at(state.lastFetch)} PKT`:'Connecting to your inverters';
-  renderVoltageStats(solar,transport);renderBattery(b,batteryOk);renderDevices(solar,b,transport);renderCharts();
+  renderVoltageStats(solar,transport);renderBattery(b,batteryOk);renderDevices(solar,b,transport);renderGauges(solar,b,transport,total);renderCharts();
+}
+function gaugeCard({title,source,value,unit,min=0,max,decimals=1,tone='green',watch=null,caption,timestamp,status}){
+  const known=valid(value),scaled=valid(max)&&max>min;
+  const ratio=known&&scaled?Math.max(0,Math.min(1,(value-min)/(max-min))):null;
+  const point=(fraction,radius=88)=>{const a=(150+240*fraction)*Math.PI/180;return {x:130+radius*Math.cos(a),y:122+radius*Math.sin(a)};};
+  const start=point(0),end=point(1),arc=`M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A 88 88 0 1 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
+  const dot=ratio===null?null:point(ratio),high=known&&valid(watch)&&value>watch;
+  let marker='';
+  if(valid(watch)&&scaled&&watch>=min&&watch<=max){const f=(watch-min)/(max-min),a=point(f,75),b=point(f,101);marker=`<line class="gauge-watch" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;}
+  const offScale=known&&scaled&&(value<min||value>max);
+  const label=known?`${fmt(value,decimals)} ${unit}`:'Reading unavailable';
+  return `<article class="card gauge-card gauge-${high?'amber':tone}"><div class="gauge-heading"><div><span class="eyebrow">${esc(source)}</span><h2>${esc(title)}</h2></div><span class="tiny-state ${known?'live':esc(status||'connecting')}">${known?'Live':esc(statusLabel(status==='live'?'stale':status||'connecting'))}</span></div><svg class="gauge-dial" viewBox="0 0 260 200" role="img" aria-label="${esc(title+' · '+source+' · '+label)}"><path class="gauge-track" d="${arc}"/>${ratio!==null?`<path class="gauge-progress" d="${arc}" pathLength="100" stroke-dasharray="${(ratio*100).toFixed(3)} 100"/>`:''}${marker}${dot?`<circle class="gauge-tip" cx="${dot.x}" cy="${dot.y}" r="5"/>`:''}<text class="gauge-number" x="130" y="121">${fmt(value,decimals)}</text><text class="gauge-unit" x="130" y="146">${esc(unit)}</text><text class="gauge-scale" x="48" y="191">${scaled?fmt(min,unit==='kW'?1:0):'—'}</text><text class="gauge-scale" x="212" y="191">${scaled?fmt(max,unit==='kW'?1:0):'—'}</text></svg><div class="gauge-caption ${high?'above-watch':''}">${high?'Above 240 V watch level':offScale?'Reading outside displayed scale':esc(caption)}</div><div class="gauge-updated">${known?'Measured '+esc(age(timestamp)):'Waiting for a fresh device reading'}</div></article>`;
+}
+function renderGauges(solar,b,transport,total){
+  const cards=[],live=id=>transport&&current(solar[id]);
+  for(const id of Object.keys(names)){
+    const r=solar[id]||{},cap=valid(r.installedW)&&r.installedW>0?r.installedW/1000:null;
+    cards.push({title:'Solar output',source:names[id],value:live(id)&&valid(r.solarW)?r.solarW/1000:null,unit:'kW',max:cap,decimals:2,tone:id==='pv14000'?'green':'gold',caption:cap?`Installed PV · ${fmt(cap,2)} kW`:'Installed PV capacity unavailable',timestamp:r.timestamp,status:r.status});
+  }
+  const batteryOk=transport&&batteryCurrent(b);
+  cards.push({title:'Battery charge',source:'Matrix · battery only',value:batteryOk?b.soc:null,unit:'%',max:100,decimals:0,tone:'teal',caption:batteryOk?b.mode==='charging'?'Charging your reserve':b.mode==='discharging'?'Battery supplying power':b.mode==='idle'?'Battery on standby':'State of charge':'State of charge',timestamp:b.timestamp,status:b.status});
+  for(const id of Object.keys(names)){
+    const r=solar[id]||{};
+    cards.push({title:'Grid voltage',source:names[id],value:live(id)?r.gridV:null,unit:'V',min:180,max:270,watch:240,caption:'240 V observation marker',timestamp:r.timestamp,status:r.status});
+  }
+  const both=Object.keys(names).every(live),rated=Object.keys(names).every(id=>valid(solar[id]?.ratingW)&&solar[id].ratingW>0)?Object.keys(names).reduce((sum,id)=>sum+solar[id].ratingW,0)/1000:null;
+  cards.push({title:'Inverter load',source:'PV14000 + PV9000',value:both&&valid(total.loadW)?total.loadW/1000:null,unit:'kW',max:rated,decimals:2,tone:'blue',caption:rated?`Combined output rating · ${fmt(rated,1)} kW`:'Output rating unavailable',timestamp:both?Math.min(...Object.keys(names).map(id=>solar[id].timestamp)):null,status:both?'live':Object.keys(names).some(id=>solar[id]?.status==='connecting')?'connecting':'stale'});
+  $('#live-gauges').innerHTML=cards.map(gaugeCard).join('');
 }
 function renderVoltageStats(solar,transport){
   $('#voltage-stats').innerHTML=Object.keys(names).map(id=>{const r=solar[id],ok=transport&&current(r),rows=historyRows(id),high=rows.filter(x=>valid(x.gridV)&&x.gridV>240);return metric(`${names[id]} · Grid voltage`,fmt(ok?r.gridV:null),'V',`${high.length} of ${rows.filter(p=>valid(p.gridV)).length} recorded samples above 240 V`);}).join('');
@@ -103,7 +131,7 @@ function renderCharts(){
   $('#observations').innerHTML=selected.length?selected.map(p=>`<tr><td>${at(p.timestamp)}</td><td>${names[p.id]}</td><td>${fmt(p.gridV)} V</td><td>${fmt(p.solarW,0)} W</td><td><span class="tag ${p.gridV>240?'high':''}">${p.gridV>240?'Above 240 V':'Below / at 240 V'}</span></td></tr>`).join(''):'<tr><td class="empty-row" colspan="5">No measured samples available in this window yet.</td></tr>';
   if(state.data)renderVoltageStats(state.data.solar,!state.transportError);
 }
-const viewCopy={overview:['Energy overview','A brighter view of your energy.','Two solar inverters. One battery reserve. All in one place.'],voltage:['Voltage insights','Understand the voltage story.','Watch grid voltage and solar output with real, time-stamped readings.'],battery:['Battery reserve','Keep your reserve in view.','Battery information from your Matrix inverter, clearly separated.'],devices:['Inverter details','Every connection. Every reading.','Detailed solar telemetry and a dedicated battery-only view.']};
+const viewCopy={gauges:['Live gauges','Your energy, at a glance.','Six live gauges. A clear view of solar, voltage, load and battery charge.'],overview:['Energy overview','A brighter view of your energy.','Two solar inverters. One battery reserve. All in one place.'],voltage:['Voltage insights','Understand the voltage story.','Watch grid voltage and solar output with real, time-stamped readings.'],battery:['Battery reserve','Keep your reserve in view.','Battery information from your Matrix inverter, clearly separated.'],devices:['Inverter details','Every connection. Every reading.','Detailed solar telemetry and a dedicated battery-only view.']};
 function setView(view){if(!viewCopy[view])return;state.view=view;$$('[data-panel]').forEach(p=>p.hidden=p.dataset.panel!==view);$$('.nav-button').forEach(b=>{b.classList.toggle('active',b.dataset.view===view);b.setAttribute('aria-current',b.dataset.view===view?'page':'false');});const [crumb,title,sub]=viewCopy[view];$('#breadcrumb').textContent=crumb;$('#page-title').textContent=title;$('#page-subtitle').textContent=sub;history.replaceState(null,'',view==='overview'?'/':`/#${view}`);window.scrollTo({top:0,behavior:'instant'});renderCharts();}
 function exportCsv(){
   const rows=[['Source','Timestamp (ISO)','Solar W','Inverter load W','Grid W (positive import)','Grid V','Battery SOC %','Battery V','Battery A','Battery W (positive discharge)','Battery temperature C']];
@@ -121,4 +149,4 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();
 document.documentElement.classList.toggle('dark',readStore('raja-studio-dark',false));
 $('#date-label').textContent=dateFormat.format(Date.now()).toUpperCase()+' · GUJRAT, PAKISTAN';
 function clock(){ $('#clock').textContent=at(Date.now())+' PKT';if(state.data)render(); }
-setView(location.hash.slice(1)||'overview');render();refresh();setInterval(()=>{if(!document.hidden)refresh();},15000);setInterval(clock,10000);clock();
+setView(location.hash.slice(1)||'overview');render();refresh();setInterval(()=>{if(!document.hidden)refresh();},5000);setInterval(clock,10000);clock();

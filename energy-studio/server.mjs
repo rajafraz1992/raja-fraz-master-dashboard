@@ -12,11 +12,11 @@ const states={};
 const cache={solar:{},battery:null,energy:{},history:{pv14000:[],pv9000:[]}};
 const definitions={};
 for(const id of Object.keys(paths)){
-  definitions[id]={url:`${SOLAR}${paths[id]}/live?fresh=1`,every:15000,read:j=>cache.solar[id]=solarReading(j,id)};
+  definitions[id]={url:`${SOLAR}${paths[id]}/live?fresh=1`,every:5000,read:j=>cache.solar[id]=solarReading(j,id)};
   definitions[`${id}Energy`]={url:`${SOLAR}${paths[id]}/energy?period=T`,every:60000,read:j=>cache.energy[id]=energyReading(j)};
   definitions[`${id}History`]={url:`${SOLAR}${paths[id]}/history?hours=24`,every:60000,read:j=>cache.history[id]=cleanHistory(j)};
 }
-definitions.matrix={url:`${MATRIX}/api/battery`,every:60000,read:j=>cache.battery=batteryReading(j,expected)};
+definitions.matrix={url:`${MATRIX}/api/battery`,every:5000,read:j=>cache.battery=batteryReading(j,expected)};
 async function collect(key){
   const config=definitions[key],s=states[key]??={pending:null,attempt:0,next:0,error:null};
   if(s.pending||Date.now()<s.next)return s.pending;
