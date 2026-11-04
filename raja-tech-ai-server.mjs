@@ -23,7 +23,7 @@ export function createServer({fetcher=fetch, publicOrigin=process.env.RENDER_EXT
    if(Number.isInteger(n)&&n>0&&n<=1000)target.searchParams.set('page',String(n));
   }
   try {
-   const response=await fetcher(target,{method:'GET',redirect:'manual',signal:AbortSignal.timeout(25000),headers:{Accept:'*/*'}});
+   const response=await fetcher(target,{method:'GET',redirect:'manual',signal:AbortSignal.timeout(25000),headers:{Accept:'*/*','X-Raja-Public-Gateway':'1'}});
    if(response.status>=300&&response.status<400)throw new Error('Unexpected upstream redirect');
    const type=response.headers.get('content-type')||'application/octet-stream';
    const bytes=Buffer.from(await response.arrayBuffer());
