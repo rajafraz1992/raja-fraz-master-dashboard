@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: raja-solar-power-flow
+    runtime: node
+    plan: free
+    branch: raja-solar-flow
+    rootDir: solar-flow
+    buildCommand: npm test
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: 24

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101116"><meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="Raja Solar System — live Fronus power flow, generation, grid exchange and Matrix battery monitoring.">
+  <title>RAJA SOLAR SYSTEM · Power Flow</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="#live"><img src="/icon.svg" alt="Raja Solar"><span>RAJA<span>SOLAR SYSTEM</span></span></a>
+    <p class="nav-label">ENERGY MONITOR</p>
+    <nav aria-label="Main navigation">
+      <button class="nav active" data-page="live"><span>↯</span>Live power flow</button>
+      <button class="nav" data-page="history"><span>▥</span>Energy history</button>
+      <button class="nav" data-page="devices"><span>▣</span>My inverters</button>
+    </nav>
+    <div class="sidebar-bottom"><span class="tiny-pulse"></span>Your solar system<p>Gujrat, Pakistan<br><span id="pk-clock">Asia/Karachi</span></p></div>
+  </aside>
+  <main>
+    <header class="topbar"><div><p class="eyebrow">YOUR ENERGY, AT A GLANCE</p><h1 id="page-title">Live power flow</h1></div><div class="top-actions"><span id="connection" class="status pending" role="status">Connecting</span><button id="refresh" class="icon-button" aria-label="Refresh readings" title="Refresh readings">↻</button></div></header>
+    <div class="toolbar"><div class="segments" id="system-tabs" role="group" aria-label="Select inverter"><button data-system="combined" class="selected">Combined</button><button data-system="pv14000">PV14000</button><button data-system="pv9000">PV9000</button></div><label class="refresh-label">Refresh <select id="interval" aria-label="Refresh interval"><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="30">30 seconds</option></select></label></div>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <section id="live-page" class="page">
+      <div class="kpi-row" id="power-kpis"></div>
+      <div class="flow-layout">
+        <article class="panel flow-panel">
+          <div class="panel-heading"><div><p class="eyebrow">REAL-TIME ENERGY</p><h2 id="flow-title">Combined system</h2></div><span class="outline-tag">POWER FLOW</span></div>
+          <div id="flow-host" class="flow-host"><div class="flow-placeholder"><span>☀</span><p>Connecting to your inverters…</p></div></div>
+          <div class="flow-caption"><span id="sample-age">Waiting for device readings</span><span id="flow-direction">Measured power · W / kW</span></div>
+        </article>
+        <aside class="side-stack">
+          <article class="panel battery-panel"><div class="panel-heading"><div><p class="eyebrow purple">FRONUS MATRIX</p><h2>Battery reserve</h2></div><span id="battery-status" class="dot-status"></span></div><div class="battery-hero"><div class="battery-outline"><div id="battery-fill"></div><span id="battery-soc">—<small>%</small></span></div><div><strong id="battery-mode">Connecting</strong><span id="battery-age">Waiting for a reading</span></div></div><div id="battery-metrics" class="small-metrics"></div><p class="fineprint">Matrix battery monitor · shown separately from solar and load totals.</p></article>
+          <article class="panel grid-panel"><div class="panel-heading"><div><p class="eyebrow blue">GRID QUALITY</p><h2>Voltage monitor</h2></div><span class="outline-tag">AC</span></div><div id="voltage-readings"></div><p class="fineprint">Alert marker at 240 V, based on your monitoring preference.</p></article>
+        </aside>
+      </div>
+      <div class="section-heading"><h2>Today’s energy</h2><span id="energy-date">Pakistan local day</span></div>
+      <div id="energy-kpis" class="energy-row"></div>
+    </section>
+    <section id="history-page" class="page" hidden>
+      <article class="panel"><div class="panel-heading"><div><p class="eyebrow">ACTUAL DEVICE RECORDS</p><h2>Power over time</h2></div><button id="export" class="small-button">Export CSV ↓</button></div><div class="chart-toolbar"><div class="legend"><span class="yellow">● Solar</span><span class="green">● Load</span><span class="blue">● Grid</span></div><div class="segments compact" id="period-tabs"><button data-hours="1">1h</button><button data-hours="6" class="selected">6h</button><button data-hours="24">24h</button><button data-hours="168">7d</button></div></div><div id="history-chart" class="history-chart"></div><p class="fineprint">Grid above zero = import; below zero = export. Gaps remain visible when readings are missing.</p></article>
+      <div id="history-summary" class="notice"></div>
+    </section>
+    <section id="devices-page" class="page" hidden><div id="device-cards" class="device-grid"></div></section>
+    <footer><span>RAJA SOLAR SYSTEM <span class="footer-dot">·</span> Read-only monitoring</span><a href="https://github.com/slipx06/sunsynk-power-flow-card" target="_blank" rel="noopener noreferrer">Sunsynk Power Flow Card by slipx06 ↗</a></footer>
+  </main>
+</div>
+<dialog id="detail"><button id="close-detail" aria-label="Close details">×</button><h2 id="detail-title">Sensor reading</h2><div id="detail-body"></div></dialog>
+<div id="toast" class="toast" role="status" hidden></div>
+<script type="module" src="/app.js"></script>
+</body></html>

@@ -1,0 +1,14 @@
+{
+  "name": "raja-solar-power-flow",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "dev": "node --use-env-proxy server.mjs",
+    "start": "node server.mjs",
+    "test": "node --test tests/*.test.mjs"
+  }
+}

@@ -1,0 +1,5 @@
+qa/
+public/__qa-*.html
+node_modules/
+.env
+.env.*

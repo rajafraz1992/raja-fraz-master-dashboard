@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {cardModel} from '../public/card-adapter.js';
+const now=Date.parse('2026-11-07T10:00:00Z');
+const row=(id,solarW,loadW,gridW)=>({id,status:'live',timestamp:now-1000,receivedAt:now,solarW,loadW,gridW,installedW:6000,outputV:230,gridHz:50,temperature:35});
+const data=()=>({solar:{pv14000:row('pv14000',4000,1000,-2950),pv9000:row('pv9000',2000,1200,-750)},energy:{},battery:{solarW:99999,power:5000}});
+test('signed grid export reaches original card unchanged and Matrix is isolated',()=>{const m=cardModel(data(),'combined',now);assert.equal(m.hass.states[m.config.entities.grid_ct_power_172].state,'-3700');assert.equal(m.hass.states[m.config.entities.essential_power].state,'2200');assert.equal(m.config.show_battery,false);assert.equal(m.config.solar.pv1_name,'PV14000');assert.equal(m.config.solar.pv2_name,'PV9000');assert.equal(m.config.inverter.autarky,'no');assert.equal(m.config.entities.inverter_power_175,undefined);});
+test('missing or stale power never renders a false zero through the card',()=>{let d=data();d.solar.pv9000.timestamp=now-181000;assert.equal(cardModel(d,'combined',now),null);assert.ok(cardModel(d,'pv14000',now));d=data();d.solar.pv9000.gridW=null;assert.equal(cardModel(d,'pv9000',now),null);assert.equal(cardModel(data(),'combined',now,false),null);});
+test('a real zero at night remains a valid reading',()=>{const d=data();for(const r of Object.values(d.solar)){r.solarW=0;r.gridW=500;}const m=cardModel(d,'combined',now);assert.equal(m.hass.states[m.config.entities.pv_total].state,'0');assert.equal(m.hass.states[m.config.entities.grid_ct_power_172].state,'1000');});
+test('unsupported status, temperature type and output power are not invented',()=>{const m=cardModel(data(),'pv9000',now);assert.equal(m.config.entities.inverter_status_59,undefined);assert.equal(m.config.entities.inverter_power_175,undefined);assert.equal(m.config.entities.dc_transformer_temp_90,undefined);assert.equal(m.hass.states[m.config.entities.inverter_voltage_154].state,'230');assert.equal(m.config.solar.show_daily,false);});
